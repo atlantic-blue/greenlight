@@ -6,6 +6,10 @@
 
 TDD-first development system for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Tests are the source of truth. Green means done. Security is built in, not bolted on.
 
+<img width="613" height="434" alt="Screenshot 2026-02-08 at 08 52 11" src="https://github.com/user-attachments/assets/145e1553-7b4b-48d1-a77d-a2052c60d3d1" />
+
+<img width="1470" height="671" alt="Screenshot 2026-02-08 at 08 50 32" src="https://github.com/user-attachments/assets/5a33ab58-e576-4a80-8a88-614b2e45ea46" />
+
 ## Quick Start
 
 ```bash
