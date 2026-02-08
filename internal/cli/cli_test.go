@@ -300,9 +300,9 @@ func TestRun_ContentFS_PassedToInstall(t *testing.T) {
 	exitCode := cli.Run([]string{"install", "--local"}, contentFS, &stdout)
 
 	if exitCode == 0 {
-		// Check that at least one manifest file was installed
+		// Check that at least one manifest file was installed (inside .claude/)
 		claudeDir := filepath.Join(tempDir, ".claude")
-		manifestPath := filepath.Join(claudeDir, "CLAUDE.md")
+		manifestPath := filepath.Join(claudeDir, "agents", "gl-architect.md")
 		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
 			t.Error("expected manifest files to be installed from contentFS, but none found")
 		}

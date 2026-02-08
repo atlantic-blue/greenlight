@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"os"
 
@@ -14,7 +15,8 @@ var embeddedContent embed.FS
 func main() {
 	contentFS, err := fs.Sub(embeddedContent, "src")
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	os.Exit(cli.Run(os.Args[1:], contentFS))
+	os.Exit(cli.Run(os.Args[1:], contentFS, os.Stdout))
 }

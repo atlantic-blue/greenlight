@@ -4,15 +4,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 
 	"github.com/atlantic-blue/greenlight/internal/cmd"
 )
 
 // Run dispatches to the appropriate subcommand based on args.
 // contentFS provides the embedded source content.
-func Run(args []string, contentFS fs.FS) int {
-	stdout := os.Stdout
+func Run(args []string, contentFS fs.FS, stdout io.Writer) int {
 
 	if len(args) == 0 {
 		printUsage(stdout)
