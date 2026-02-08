@@ -1,0 +1,36 @@
+project_name: greenlight
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: greenlight
+    ldflags:
+      - -s -w
+      - -X github.com/atlantic-blue/greenlight/internal/version.Version={{.Version}}
+      - -X github.com/atlantic-blue/greenlight/internal/version.GitCommit={{.Commit}}
+      - -X github.com/atlantic-blue/greenlight/internal/version.BuildDate={{.Date}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: atlantic-blue
+    name: greenlight
+  mode: append

@@ -1,0 +1,19 @@
+commit-msg:
+  commands:
+    conventional-commit:
+      run: |
+        MESSAGE=$(head -1 {1})
+        if ! echo "$MESSAGE" | grep -qE '^(feat|fix|docs|chore|refactor|test|ci)(\(.+\))?!?: .+'; then
+          echo ""
+          echo "  Invalid commit message format."
+          echo ""
+          echo "  Expected: <type>(<optional scope>): <description>"
+          echo ""
+          echo "  Examples:"
+          echo "    feat: add user authentication"
+          echo "    fix(installer): handle nil pointer"
+          echo "    docs: update README"
+          echo "    feat!: redesign config format"
+          echo ""
+          exit 1
+        fi

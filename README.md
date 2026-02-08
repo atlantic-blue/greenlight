@@ -149,11 +149,33 @@ map? --> init --> design --> slice 1 --> slice 2 --> ... --> ship
 
 ### Model Profiles
 
+Three built-in profiles control which Claude model each agent uses. Choose based on your priorities:
+
 | Profile | Designer | Architect | Tests | Implement | Security | Verify | Debug | Map |
 |---------|----------|-----------|-------|-----------|----------|--------|-------|-----|
 | quality | opus | opus | opus | opus | opus | opus | opus | opus |
 | balanced | opus | opus | sonnet | sonnet | sonnet | sonnet | sonnet | sonnet |
-| budget | opus | sonnet | sonnet | sonnet | haiku | haiku | sonnet | haiku |
+| budget | sonnet | sonnet | sonnet | sonnet | haiku | sonnet | haiku | haiku |
+
+```bash
+/gl:settings profile balanced        # switch profile
+/gl:settings model security opus     # override one agent
+/gl:settings model security reset    # revert to profile default
+```
+
+Per-agent overrides take precedence over the profile. Resolution order: `model_overrides[agent]` > `profiles[profile][agent]` > `sonnet`.
+
+### Why These Defaults
+
+**Designer and architect default to opus.** These agents make decisions that cascade through everything downstream. A bad architectural choice or missed requirement means every slice built on top of it is wrong. The cost of opus here is small compared to reworking multiple slices.
+
+**Implementation agents default to sonnet.** The test writer, implementer, and debugger follow contracts and standards. Their work is constrained by inputs (contracts) and verified by outputs (test runner). Sonnet handles "make this test pass" and "find the bug" reliably. The TDD loop catches quality issues regardless of model.
+
+**Security defaults to sonnet but consider upgrading.** Most security checks are mechanical: SQL injection, missing auth, XSS. Sonnet handles these well. But if your project handles financial data, health records, or PII, `opus` is worth it for catching subtle auth bypass and business logic vulnerabilities.
+
+**Codebase mapper defaults to sonnet.** It reads and documents existing code, not making decisions. Sonnet is thorough enough for this.
+
+This is about cost control, not capability hiding. Every agent works with any model. The profiles just set sensible defaults for common priorities.
 
 ### Modes
 
