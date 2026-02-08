@@ -340,6 +340,39 @@ When spawned by `/gl:add-slice`:
 5. Produce: new contracts + updated GRAPH.json with new slice added
 6. New slice gets next available ID and correct dependency links
 
+## Handling [WRAPPED] Contracts
+
+When CONTRACTS.md contains contracts tagged with `[WRAPPED]`:
+
+1. **Recognise them as existing boundaries.** Wrapped contracts represent real boundaries in the codebase that have been locked with locking tests. They are immutable — do NOT redefine them.
+
+2. **Never redefine a [WRAPPED] contract.** If a new greenfield contract would conflict with a wrapped contract name, use the `wraps` field to plan a transition instead of creating a duplicate.
+
+3. **Reference as dependencies.** New slices CAN depend on wrapped contracts. Treat them the same as any other existing contract.
+
+4. **Plan transitions with `wraps` field.** When a slice should refactor a wrapped boundary, add a `wraps` field to the slice in GRAPH.json:
+
+   ```json
+   {
+     "id": "S-XX",
+     "name": "Refactor auth with proper contracts",
+     "contracts": ["AuthenticateUser", "ValidateToken"],
+     "wraps": ["auth"],
+     "depends_on": []
+   }
+   ```
+
+   The `wraps` field is an array of boundary names matching STATE.md Wrapped Boundaries entries. When `/gl:slice` processes this slice, it handles the locking-to-integration transition automatically.
+
+5. **Contract transition lifecycle:**
+   - `[WRAPPED]` contract created by `/gl:wrap`
+   - Slice with `wraps` field targets the boundary
+   - Test writer receives locking test names as context
+   - After verification, locking tests deleted, `[WRAPPED]` tag removed
+   - Contract becomes a proper contract
+
+**The `wraps` field does NOT create a dependency** on the boundary being wrapped first — the boundary is already wrapped by `/gl:wrap` before the slice is planned.
+
 </revision_protocol>
 
 <output_checklist>

@@ -1,6 +1,6 @@
 {
   "project": "greenlight",
-  "description": "Dependency graph for Greenlight CLI stabilisation. Defines build order by slice with explicit dependencies and parallelism.",
+  "description": "Dependency graph for Greenlight CLI stabilisation and brownfield MVP. Defines build order by slice with explicit dependencies and parallelism.",
   "date": "2026-02-08",
 
   "slices": {
@@ -66,6 +66,86 @@
       "depends_on": ["S-01", "S-04", "S-05", "S-06"],
       "test_files": ["internal/cli/cli_test.go"],
       "wave": 4
+    },
+
+    "S-08": {
+      "name": "Codebase Assessment",
+      "description": "User can assess an existing codebase for gaps, risks, and untested boundaries. Creates gl-assessor agent and /gl:assess command. Agent reads codebase, maps test coverage, inventories contracts, identifies risks, compares against CLAUDE.md standards, and produces ASSESS.md with priority-tiered wrap recommendations.",
+      "deliverables": ["src/agents/gl-assessor.md", "src/commands/gl/assess.md"],
+      "contracts": ["C-17", "C-18", "C-19", "C-20"],
+      "depends_on": ["S-12"],
+      "user_action": "1. User can assess an existing codebase for gaps, risks, and untested boundaries (/gl:assess)",
+      "wave": 6,
+      "estimated_tests": 10,
+      "boundaries": [
+        "User -> /gl:assess command",
+        "/gl:assess orchestrator -> gl-assessor agent",
+        "gl-assessor agent -> Filesystem (ASSESS.md)",
+        "/gl:assess orchestrator -> gl-security agent"
+      ]
+    },
+    "S-09": {
+      "name": "Boundary Wrapping",
+      "description": "User can wrap existing code in contracts and locking tests without rewriting it. Creates gl-wrapper agent and /gl:wrap command. User selects boundary, wrapper reads implementation, extracts contracts, presents for confirmation, writes locking tests, runs security baseline, commits atomically, updates STATE.md.",
+      "deliverables": ["src/agents/gl-wrapper.md", "src/commands/gl/wrap.md"],
+      "contracts": ["C-21", "C-22", "C-23", "C-24", "C-25", "C-26"],
+      "depends_on": ["S-12"],
+      "user_action": "2. User can wrap existing code in contracts and locking tests without rewriting it (/gl:wrap)",
+      "wave": 6,
+      "estimated_tests": 12,
+      "boundaries": [
+        "User -> /gl:wrap command",
+        "/gl:wrap orchestrator -> gl-wrapper agent",
+        "gl-wrapper agent -> Filesystem (CONTRACTS.md)",
+        "gl-wrapper agent -> Filesystem (tests/locking/)",
+        "/gl:wrap orchestrator -> gl-security agent",
+        "/gl:wrap orchestrator -> Filesystem (STATE.md)"
+      ]
+    },
+    "S-10": {
+      "name": "Brownfield-Aware Command Updates",
+      "description": "User can see brownfield progress alongside greenfield slices. Updates /gl:status (Wrapped Boundaries table), /gl:help (BROWNFIELD section, FLOW line), /gl:settings (assessor and wrapper agent display).",
+      "deliverables": ["src/commands/gl/status.md (update)", "src/commands/gl/help.md (update)", "src/commands/gl/settings.md (update)"],
+      "contracts": ["C-27", "C-28", "C-29"],
+      "depends_on": ["S-12"],
+      "user_action": "3. User can see brownfield progress alongside greenfield slices (/gl:status update)",
+      "wave": 6,
+      "estimated_tests": 8,
+      "boundaries": [
+        "/gl:status command -> User (wrapped boundaries display)",
+        "/gl:help command -> User (brownfield section)",
+        "/gl:settings command -> User (assessor, wrapper agents)"
+      ]
+    },
+    "S-11": {
+      "name": "Locking-to-Integration Transition",
+      "description": "User can refactor a wrapped boundary through the normal TDD loop. Updates /gl:slice to handle wraps field: read locking test names, pass to test writer, execute TDD loop, then delete locking tests and remove [WRAPPED] tag. Updates gl-architect for [WRAPPED] contract awareness. Updates gl-test-writer for locking test name context.",
+      "deliverables": ["src/commands/gl/slice.md (update)", "src/agents/gl-architect.md (update)", "src/agents/gl-test-writer.md (update)"],
+      "contracts": ["C-30", "C-31", "C-32"],
+      "depends_on": ["S-09", "S-12"],
+      "user_action": "4. User can refactor a wrapped boundary through the normal TDD loop (/gl:slice with wraps field)",
+      "wave": 7,
+      "estimated_tests": 10,
+      "boundaries": [
+        "/gl:slice command -> Locking-to-integration transition",
+        "gl-architect agent -> CONTRACTS.md ([WRAPPED] awareness)",
+        "gl-test-writer agent -> Locking test name context"
+      ]
+    },
+    "S-12": {
+      "name": "Infrastructure and Config Updates",
+      "description": "Add 4 new file paths to Go CLI Manifest in installer.go. Update config.json template profiles with assessor and wrapper agent entries. Update CLAUDE.md with gl-assessor and gl-wrapper isolation rules and wrapper exception note. This is the foundation slice that all brownfield slices depend on.",
+      "deliverables": ["internal/installer/installer.go (manifest update)", "src/templates/config.md (update)", "src/commands/gl/init.md (update)", "src/CLAUDE.md (update)"],
+      "contracts": ["C-33", "C-34", "C-35"],
+      "depends_on": [],
+      "user_action": "Supports all user actions (infrastructure enabling layer)",
+      "wave": 5,
+      "estimated_tests": 6,
+      "boundaries": [
+        "Go CLI -> Manifest (4 new file paths)",
+        "config.json template -> Profile (assessor, wrapper entries)",
+        "CLAUDE.md -> Agent Isolation Rules (new rows)"
+      ]
     }
   },
 
@@ -73,22 +153,44 @@
     "1": {
       "description": "Independent foundations — no inter-slice dependencies. All three can be built and tested in parallel.",
       "slices": ["S-01", "S-02", "S-03"],
-      "parallel": true
+      "parallel": true,
+      "scope": "stabilisation"
     },
     "2": {
       "description": "Install depends on all Wave 1 slices (version for version file, flag parsing for args, conflict handling for CLAUDE.md).",
       "slices": ["S-04"],
-      "parallel": false
+      "parallel": false,
+      "scope": "stabilisation"
     },
     "3": {
       "description": "Check and Uninstall both depend on Install (need installed files to verify or remove). They are independent of each other and can run in parallel.",
       "slices": ["S-05", "S-06"],
-      "parallel": true
+      "parallel": true,
+      "scope": "stabilisation"
     },
     "4": {
       "description": "CLI Dispatch depends on all command handlers. Final integration layer.",
       "slices": ["S-07"],
-      "parallel": false
+      "parallel": false,
+      "scope": "stabilisation"
+    },
+    "5": {
+      "description": "Brownfield infrastructure: manifest update, config profile additions, CLAUDE.md isolation table update. No dependencies on stabilisation beyond it being complete. Foundation for all brownfield slices.",
+      "slices": ["S-12"],
+      "parallel": false,
+      "scope": "brownfield"
+    },
+    "6": {
+      "description": "Core brownfield features: assess, wrap, and command updates. All depend only on S-12 and can be built in parallel.",
+      "slices": ["S-08", "S-09", "S-10"],
+      "parallel": true,
+      "scope": "brownfield"
+    },
+    "7": {
+      "description": "Locking-to-integration transition. Depends on S-09 (wrapping must exist to refactor) and S-12 (infrastructure).",
+      "slices": ["S-11"],
+      "parallel": false,
+      "scope": "brownfield"
     }
   },
 
@@ -103,7 +205,12 @@
     { "from": "S-07", "to": "S-01", "reason": "CLI dispatches to RunVersion" },
     { "from": "S-07", "to": "S-04", "reason": "CLI dispatches to RunInstall" },
     { "from": "S-07", "to": "S-05", "reason": "CLI dispatches to RunCheck" },
-    { "from": "S-07", "to": "S-06", "reason": "CLI dispatches to RunUninstall" }
+    { "from": "S-07", "to": "S-06", "reason": "CLI dispatches to RunUninstall" },
+    { "from": "S-08", "to": "S-12", "reason": "Assess needs gl-assessor.md in manifest and assessor agent model in config profiles" },
+    { "from": "S-09", "to": "S-12", "reason": "Wrap needs gl-wrapper.md in manifest and wrapper agent model in config profiles" },
+    { "from": "S-10", "to": "S-12", "reason": "Command updates reference assessor/wrapper agents that must be in config profiles" },
+    { "from": "S-11", "to": "S-09", "reason": "Locking-to-integration transition requires wrapped boundaries to exist (locking tests, [WRAPPED] contracts)" },
+    { "from": "S-11", "to": "S-12", "reason": "Slice updates reference [WRAPPED] contracts and locking tests infrastructure" }
   ],
 
   "import_graph": {
@@ -112,5 +219,28 @@
     "internal/cmd": ["internal/installer", "internal/version"],
     "internal/installer": ["internal/version"],
     "internal/version": []
+  },
+
+  "user_action_mapping": {
+    "1_assess": {
+      "action": "User can assess an existing codebase for gaps, risks, and untested boundaries (/gl:assess)",
+      "slices": ["S-08", "S-12"],
+      "primary_slice": "S-08"
+    },
+    "2_wrap": {
+      "action": "User can wrap existing code in contracts and locking tests without rewriting it (/gl:wrap)",
+      "slices": ["S-09", "S-12"],
+      "primary_slice": "S-09"
+    },
+    "3_status": {
+      "action": "User can see brownfield progress alongside greenfield slices (/gl:status update)",
+      "slices": ["S-10", "S-12"],
+      "primary_slice": "S-10"
+    },
+    "4_refactor": {
+      "action": "User can refactor a wrapped boundary through the normal TDD loop (/gl:slice with wraps field)",
+      "slices": ["S-11", "S-09", "S-12"],
+      "primary_slice": "S-11"
+    }
   }
 }

@@ -61,17 +61,20 @@ mkdir -p .greenlight
     "quality": {
       "architect": "opus", "designer": "opus", "test_writer": "opus",
       "implementer": "opus", "security": "opus", "debugger": "opus",
-      "verifier": "opus", "codebase_mapper": "opus"
+      "verifier": "opus", "codebase_mapper": "opus",
+      "assessor": "opus", "wrapper": "opus"
     },
     "balanced": {
       "architect": "opus", "designer": "opus", "test_writer": "sonnet",
       "implementer": "sonnet", "security": "sonnet", "debugger": "sonnet",
-      "verifier": "sonnet", "codebase_mapper": "sonnet"
+      "verifier": "sonnet", "codebase_mapper": "sonnet",
+      "assessor": "sonnet", "wrapper": "sonnet"
     },
     "budget": {
       "architect": "sonnet", "designer": "sonnet", "test_writer": "sonnet",
       "implementer": "sonnet", "security": "haiku", "debugger": "sonnet",
-      "verifier": "haiku", "codebase_mapper": "haiku"
+      "verifier": "haiku", "codebase_mapper": "haiku",
+      "assessor": "haiku", "wrapper": "sonnet"
     }
   },
   "workflow": {

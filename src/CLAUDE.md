@@ -36,6 +36,10 @@ These are non-negotiable boundaries between agents:
 | gl-security | Diffs, contracts | Test implementation details | Fix production code |
 | gl-verifier | Everything | N/A | Modify any code |
 | gl-debugger | Everything | N/A | Modify tests (without approval) |
+| gl-assessor | Codebase docs, test results, standards | N/A (read-only analytical agent) | Modify any code |
+| gl-wrapper | Implementation code, existing tests | N/A | Modify production code (only writes contracts and locking tests) |
+
+**Wrapper isolation exception:** gl-wrapper is a deliberate exception. It sees implementation code AND writes locking tests. This is necessary because locking tests must verify what code currently does, not what contracts say it should do. This exception is scoped: only applies to tests in `tests/locking/`. When a boundary is later refactored via /gl:slice, locking tests are deleted and proper integration tests are written under strict isolation.
 
 Violating isolation defeats the purpose of TDD. If an agent sees its own tests, it tests its implementation. If a test writer sees implementation, it tests internals instead of behaviour.
 

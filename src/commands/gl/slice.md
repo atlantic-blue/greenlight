@@ -59,15 +59,58 @@ From GRAPH.json:
 - Slice ID, name, description
 - Contract names for this slice
 - Dependencies (already verified complete)
+- **`wraps` field** (optional) — array of boundary names from STATE.md Wrapped Boundaries table
 
 From CONTRACTS.md:
 - Full contract definitions for this slice's contracts
 - Input/output types, error states, invariants, security requirements
+- If slice has `wraps` field: read the `[WRAPPED]` contracts for those boundaries
 
 From config.json:
 - Model assignments for each agent
 - Workflow toggles (security_scan, visual_checkpoint, etc.)
 - Test commands
+
+### 2a. Detect Wraps Field (Locking-to-Integration)
+
+```bash
+# Check if slice has a wraps field
+# Example GRAPH.json entry:
+# { "id": "S-XX", "wraps": ["auth", "payments"], ... }
+```
+
+If the slice has a `wraps` field:
+
+1. **Read locking tests** for each wrapped boundary:
+   ```bash
+   ls tests/locking/{boundary-name}.test.* 2>/dev/null
+   ```
+
+2. **Extract locking test names** (NOT source code — names only):
+   ```bash
+   grep -n "func Test\|it('\|it(\"" tests/locking/{boundary-name}.test.* | sed 's/.*func //' | sed 's/(.*//'
+   ```
+   These become context for the test writer: "these are the existing locked behaviours."
+
+3. **Read [WRAPPED] contracts** for each wrapped boundary from CONTRACTS.md.
+
+4. **Verify wrapped boundaries exist** in STATE.md with status `wrapped`:
+   - If boundary not found in STATE.md → warn user, proceed without locking context (treat as greenfield)
+   - If locking test file not found → warn user, proceed without locking context
+
+Report:
+```
+Slice has wraps field: [{boundary_names}]
+
+Locking context loaded:
+  {boundary_name}: {N} locking tests, [WRAPPED] contract found
+  {boundary_name}: {N} locking tests, [WRAPPED] contract found
+
+This is a locking-to-integration transition. After verification:
+  - Locking tests will be deleted
+  - [WRAPPED] tags will be removed from contracts
+  - STATE.md boundary status will change to "refactored"
+```
 
 ### 3. Check for Previous Attempt
 
@@ -98,6 +141,8 @@ Update `.greenlight/STATE.md`:
 
 The test writer NEVER sees implementation code. Send ONLY contracts, stack info, and existing test patterns.
 
+**If slice has `wraps` field:** Include locking test NAMES (not source code) as additional context. The test writer uses these to ensure integration tests cover at least all locked behaviours (superset requirement).
+
 ```
 Task(prompt="
 Read agents/gl-test-writer.md
@@ -111,6 +156,7 @@ Description: {what user can do after this}
 
 <contracts>
 {FULL contract definitions for this slice — types, interfaces, error states, invariants}
+{If wraps slice: include [WRAPPED] contracts for the wrapped boundaries}
 </contracts>
 
 <stack>
@@ -126,6 +172,25 @@ Assertion library: {assertion_library}
 <test_fixtures>
 {existing factory functions from tests/fixtures/}
 </test_fixtures>
+
+{IF WRAPS SLICE — include this additional block:}
+<locked_behaviours>
+This slice refactors wrapped boundaries. The following locking test NAMES
+describe behaviours that are currently locked. Your integration tests MUST
+cover at least all of these behaviours (superset requirement).
+
+Boundary: {boundary_name}
+Locking tests:
+  - [LOCK] {test name 1}
+  - [LOCK] {test name 2}
+  - [LOCK] {test name 3}
+  ...
+
+NOTE: You are receiving test NAMES only, not source code. This preserves
+isolation. Use these names to understand what behaviours exist, then write
+integration tests that cover all of them plus any new behaviours from the
+contracts.
+</locked_behaviours>
 
 Write integration tests for this slice. Create:
 1. tests/integration/{slice-id}.test.{ext}
@@ -298,7 +363,10 @@ Run FULL test suite (not just this slice):
 | All pass | Proceed to security scan |
 | This slice's tests fail | Spawn fresh implementer with failure output (max 3 attempts) |
 | Other slice's tests fail | Regression detected. Spawn fresh implementer to fix WITHOUT modifying other tests |
+| Locking tests fail (wraps slice) | Regression: existing locked behaviour broken. Implementer MUST fix — locking tests serve as guardrails during refactoring |
 | Infrastructure error | Fix infrastructure, re-run |
+
+**For wraps slices:** Both locking tests AND new integration tests must pass at this point. Locking tests are the safety net — they prove the refactored code still does what the original code did. They are only deleted AFTER verification succeeds in Step 6.
 
 ---
 
@@ -335,6 +403,20 @@ Name: {slice_name}
 
 Review this slice for security vulnerabilities.
 For each issue found, write a FAILING test in tests/security/{slice-id}-security.test.{ext}
+
+{IF WRAPS SLICE — include this additional block:}
+<known_security_issues>
+This slice refactors a previously wrapped boundary. The following security
+issues were documented during wrapping (from the [WRAPPED] contract's
+Security section):
+
+{list of known issues from wrapped contract Security section}
+
+Check whether these known issues have been addressed by the refactoring.
+- NEW vulnerabilities introduced by the refactoring: write FAILING tests (normal behaviour)
+- Pre-existing issues that persist unchanged: FLAG but do NOT block (they were known before)
+- Pre-existing issues that have been fixed: note as resolved
+</known_security_issues>
 ", subagent_type="gl-security", model="{resolved_model.security}", description="Security scan for slice {slice_id}")
 ```
 
@@ -419,6 +501,70 @@ Route each failure to the appropriate fix:
 - Standards violation → spawn fresh implementer to refactor
 
 After fixes → re-run verification. Max 2 verification cycles.
+
+---
+
+## Step 6a: Locking-to-Integration Transition (wraps slices only)
+
+**Skip if slice has no `wraps` field.**
+
+After verification succeeds and both locking tests AND integration tests pass:
+
+### 1. Delete Locking Tests
+
+```bash
+# For each boundary in the wraps field:
+rm tests/locking/{boundary-name}.test.{ext}
+
+# If tests/locking/ is now empty:
+rmdir tests/locking/ 2>/dev/null
+```
+
+Print: `Locking tests removed: tests/locking/{boundary-name}.test.{ext}`
+
+### 2. Remove [WRAPPED] Tag from Contracts
+
+For each wrapped boundary in CONTRACTS.md:
+- Find the contract heading: `### Contract: {BoundaryName} [WRAPPED]`
+- Remove the `[WRAPPED]` tag: `### Contract: {BoundaryName}`
+- Remove the `**Source:**`, `**Wrapped on:**`, and `**Locking tests:**` metadata lines
+- Change `**Slice:** wrappable` to `**Slice:** {current_slice_id}`
+
+Print: `[WRAPPED] tag removed from contract: {BoundaryName}`
+
+### 3. Update STATE.md Wrapped Boundaries
+
+For each boundary in the wraps field:
+- Change status from `wrapped` to `refactored`
+- Optionally add note: `(replaced by slice {slice_id})`
+
+### 4. Run Full Test Suite Again
+
+Confirm all tests still pass after locking test deletion:
+
+```bash
+{config.test.command}
+```
+
+If tests fail after locking test deletion → something is wrong. Do NOT proceed. Report error.
+
+### 5. Commit Transition
+
+```bash
+git add tests/locking/ .greenlight/CONTRACTS.md .greenlight/STATE.md
+git commit -m "refactor({slice_id}): transition {boundary_names} from locking to integration
+
+- Locking tests deleted: {list}
+- [WRAPPED] tags removed from contracts: {list}
+- STATE.md boundaries marked as refactored
+"
+```
+
+Report:
+```
+Locking-to-integration transition complete:
+  {boundary_name}: locking tests deleted, [WRAPPED] tag removed, status → refactored
+```
 
 ---
 

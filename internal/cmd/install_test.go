@@ -11,10 +11,11 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/cmd"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 26 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 30 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
+		"agents/gl-assessor.md":                    &fstest.MapFile{Data: []byte("# Assessor\n")},
 		"agents/gl-codebase-mapper.md":             &fstest.MapFile{Data: []byte("# Codebase Mapper\n")},
 		"agents/gl-debugger.md":                    &fstest.MapFile{Data: []byte("# Debugger\n")},
 		"agents/gl-designer.md":                    &fstest.MapFile{Data: []byte("# Designer\n")},
@@ -22,7 +23,9 @@ func buildTestFS() fstest.MapFS {
 		"agents/gl-security.md":                    &fstest.MapFile{Data: []byte("# Security\n")},
 		"agents/gl-test-writer.md":                 &fstest.MapFile{Data: []byte("# Test Writer\n")},
 		"agents/gl-verifier.md":                    &fstest.MapFile{Data: []byte("# Verifier\n")},
+		"agents/gl-wrapper.md":                     &fstest.MapFile{Data: []byte("# Wrapper\n")},
 		"commands/gl/add-slice.md":                 &fstest.MapFile{Data: []byte("# Add Slice\n")},
+		"commands/gl/assess.md":                    &fstest.MapFile{Data: []byte("# Assess\n")},
 		"commands/gl/design.md":                    &fstest.MapFile{Data: []byte("# Design\n")},
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
@@ -34,6 +37,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/ship.md":                      &fstest.MapFile{Data: []byte("# Ship\n")},
 		"commands/gl/slice.md":                     &fstest.MapFile{Data: []byte("# Slice\n")},
 		"commands/gl/status.md":                    &fstest.MapFile{Data: []byte("# Status\n")},
+		"commands/gl/wrap.md":                      &fstest.MapFile{Data: []byte("# Wrap\n")},
 		"references/checkpoint-protocol.md":        &fstest.MapFile{Data: []byte("# Checkpoint Protocol\n")},
 		"references/deviation-rules.md":            &fstest.MapFile{Data: []byte("# Deviation Rules\n")},
 		"references/verification-patterns.md":      &fstest.MapFile{Data: []byte("# Verification Patterns\n")},
