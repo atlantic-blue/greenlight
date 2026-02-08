@@ -16,23 +16,23 @@ Mode: yolo
 | S-05 | Check | complete | 52 | 0 | S-02, S-04 |
 | S-06 | Uninstall | complete | 28 | 0 | S-02, S-04 |
 | S-07 | CLI Dispatch | complete | 22 | 0 | S-01, S-04, S-05, S-06 |
-| S-12 | Infrastructure & Config | pending | 0 | 0 | none |
+| S-12 | Infrastructure & Config | complete | 8 | 0 | none |
 | S-08 | Codebase Assessment | pending | 0 | 0 | S-12 |
 | S-09 | Boundary Wrapping | pending | 0 | 0 | S-12 |
 | S-10 | Brownfield-Aware Commands | pending | 0 | 0 | S-12 |
 | S-11 | Locking-to-Integration | pending | 0 | 0 | S-09, S-12 |
 
-Progress: [███████░░░░░] 7/12 slices
+Progress: [████████░░░░] 8/12 slices
 
 ## Current
 
-Slice: S-12 — Infrastructure & Config
+Slice: S-08, S-09, S-10 — Wave 6 (parallel)
 Step: pending
-Last activity: 2026-02-08 — Brownfield contracts generated (C-17 through C-35)
+Last activity: 2026-02-08 — S-12 complete (8 tests, all green)
 
 ## Test Summary
 
-Total: 228 passing, 0 failing, 0 security
+Total: 236 passing, 0 failing, 0 security
 Last run: 2026-02-08
 
 ## Decisions
