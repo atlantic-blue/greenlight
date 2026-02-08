@@ -21,7 +21,7 @@ func RunUninstall(args []string, stdout io.Writer) int {
 		return 1
 	}
 
-	if err := installer.Uninstall(targetDir, stdout); err != nil {
+	if err := installer.Uninstall(targetDir, scope, stdout); err != nil {
 		fmt.Fprintf(stdout, "error: %v\n", err)
 		return 1
 	}

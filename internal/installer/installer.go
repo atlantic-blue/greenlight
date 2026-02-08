@@ -131,7 +131,7 @@ func (inst *Installer) writeVersionFile(targetDir string) error {
 
 // Uninstall removes greenlight-managed files from targetDir.
 // It only removes files listed in the manifest plus the version file.
-func Uninstall(targetDir string, stdout io.Writer) error {
+func Uninstall(targetDir, scope string, stdout io.Writer) error {
 	for _, relPath := range Manifest {
 		if relPath == "CLAUDE.md" {
 			// Don't remove CLAUDE.md — it may have user content
@@ -147,6 +147,31 @@ func Uninstall(targetDir string, stdout io.Writer) error {
 	// Remove version file
 	versionPath := filepath.Join(targetDir, ".greenlight-version")
 	os.Remove(versionPath)
+
+	// Remove conflict artifacts using asymmetric path resolution
+	var artifactDir string
+	if scope == "global" {
+		artifactDir = targetDir
+	} else if scope == "local" {
+		// For local scope, artifacts are in parent of targetDir
+		if targetDir == ".claude" {
+			artifactDir = "."
+		} else {
+			artifactDir = filepath.Dir(targetDir)
+		}
+	}
+
+	// Remove CLAUDE_GREENLIGHT.md if present
+	greenlightPath := filepath.Join(artifactDir, "CLAUDE_GREENLIGHT.md")
+	if err := os.Remove(greenlightPath); err == nil {
+		fmt.Fprintf(stdout, "  removed CLAUDE_GREENLIGHT.md\n")
+	}
+
+	// Remove CLAUDE.md.backup if present
+	backupPath := filepath.Join(artifactDir, "CLAUDE.md.backup")
+	if err := os.Remove(backupPath); err == nil {
+		fmt.Fprintf(stdout, "  removed CLAUDE.md.backup\n")
+	}
 
 	// Clean up empty directories (deepest first)
 	cleanEmptyDirs(targetDir, "commands/gl")

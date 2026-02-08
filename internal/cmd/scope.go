@@ -21,12 +21,12 @@ func ParseScope(args []string) (scope string, remaining []string, err error) {
 	for _, arg := range args {
 		switch arg {
 		case "--global":
-			if scope != "" {
+			if scope != "" && scope != "global" {
 				return "", nil, ErrBothScopes
 			}
 			scope = "global"
 		case "--local":
-			if scope != "" {
+			if scope != "" && scope != "local" {
 				return "", nil, ErrBothScopes
 			}
 			scope = "local"

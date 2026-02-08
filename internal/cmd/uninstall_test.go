@@ -281,7 +281,7 @@ func TestRunUninstall_PassesScopeToUninstall(t *testing.T) {
 
 // Test C-14.7: Output written to provided writer
 func TestRunUninstall_OutputWrittenToProvidedWriter(t *testing.T) {
-	targetDir, cleanup := setupLocalUninstallTest(t)
+	_, cleanup := setupLocalUninstallTest(t)
 	defer cleanup()
 
 	var stdout bytes.Buffer
@@ -340,7 +340,7 @@ func TestRunUninstall_InvalidScopeFlagReturnsOne(t *testing.T) {
 
 // Test C-14.10: Multiple --local flags treated as single flag
 func TestRunUninstall_MultipleLocalFlagsTreatedAsSingle(t *testing.T) {
-	targetDir, cleanup := setupLocalUninstallTest(t)
+	_, cleanup := setupLocalUninstallTest(t)
 	defer cleanup()
 
 	var stdout bytes.Buffer
