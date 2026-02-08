@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/atlantic-blue/greenlight/compare/v1.1.0...v1.2.0) (2026-02-08)
+
+
+### Features
+
+* Lifecycle hardening ([#2](https://github.com/atlantic-blue/greenlight/issues/2)) ([6cca23d](https://github.com/atlantic-blue/greenlight/commit/6cca23d0196acee8fd162f84517c81680b596cdc))
+
 # [1.1.0](https://github.com/atlantic-blue/greenlight/compare/v1.0.1...v1.1.0) (2026-02-08)
 
 
