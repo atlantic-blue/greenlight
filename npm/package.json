@@ -1,0 +1,26 @@
+{
+  "name": "greenlight-cc",
+  "version": "0.0.0",
+  "description": "TDD-first development system for Claude Code",
+  "bin": {
+    "greenlight-cc": "bin/index.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "keywords": [
+    "claude-code",
+    "tdd",
+    "testing",
+    "ai",
+    "developer-tools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atlantic-blue/greenlight.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
