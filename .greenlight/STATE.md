@@ -16,14 +16,19 @@ Mode: yolo
 | S-05 | Check | complete | 52 | 0 | S-02, S-04 |
 | S-06 | Uninstall | complete | 28 | 0 | S-02, S-04 |
 | S-07 | CLI Dispatch | complete | 22 | 0 | S-01, S-04, S-05, S-06 |
+| S-12 | Infrastructure & Config | pending | 0 | 0 | none |
+| S-08 | Codebase Assessment | pending | 0 | 0 | S-12 |
+| S-09 | Boundary Wrapping | pending | 0 | 0 | S-12 |
+| S-10 | Brownfield-Aware Commands | pending | 0 | 0 | S-12 |
+| S-11 | Locking-to-Integration | pending | 0 | 0 | S-09, S-12 |
 
-Progress: [██████████] 7/7 slices
+Progress: [███████░░░░░] 7/12 slices
 
 ## Current
 
-Slice: S-07 — CLI Dispatch
-Step: complete
-Last activity: 2026-02-08 — S-07 complete (22 tests, 0 security findings)
+Slice: S-12 — Infrastructure & Config
+Step: pending
+Last activity: 2026-02-08 — Brownfield contracts generated (C-17 through C-35)
 
 ## Test Summary
 
@@ -36,6 +41,10 @@ Last run: 2026-02-08
 - TD-2: cli.Run accepts io.Writer parameter
 - TD-3: Uninstall removes conflict artifacts + prints
 - TD-4: --verify flag for content hash comparison on check
+- UD-1: Wrapped contracts in CONTRACTS.md with [WRAPPED] tag
+- UD-2: gl-wrapper breaks isolation deliberately (locking tests only)
+- UD-3: File mapping always + coverage optional
+- UD-4: Separate Wrapped Boundaries section in STATE.md
 
 ## Blockers
 
