@@ -1,0 +1,135 @@
+# State Template
+
+Template for `.greenlight/STATE.md` — the project's living memory.
+
+## File Template
+
+```markdown
+# Project State
+
+## Overview
+[One-line value proposition from /gl:init]
+Stack: [language/framework/database]
+Mode: [interactive/yolo]
+
+## Slices
+
+| ID | Name | Status | Tests | Security | Deps |
+|----|------|--------|-------|----------|------|
+| 1  | [name] | pending | 0 | 0 | none |
+| 2  | [name] | pending | 0 | 0 | 1 |
+
+Progress: [░░░░░░░░░░] 0/N slices
+
+## Current
+
+Slice: [N] — [name]
+Step: [pending | tests | implementing | security | fixing | complete]
+Last activity: [YYYY-MM-DD] — [what happened]
+
+## Test Summary
+
+Total: 0 passing, 0 failing, 0 security
+Last run: [never | YYYY-MM-DD HH:MM]
+
+## Decisions
+
+[Decisions that affect future slices]
+- None yet
+
+## Blockers
+
+[Issues preventing progress]
+- None
+
+## Session
+
+Last session: [YYYY-MM-DD HH:MM]
+Resume file: [None | .greenlight/.continue-here.md]
+```
+
+## Lifecycle
+
+### Creation
+
+Created by `/gl:init` after GRAPH.json and CONTRACTS.md are generated.
+
+**Steps:**
+1. Read project context from init conversation
+2. Read GRAPH.json for slice list
+3. Populate template with slices, all status "pending"
+4. Set current to "Slice 1 — pending"
+5. Write to `.greenlight/STATE.md`
+
+### Reading (first step of every workflow)
+
+Every command reads STATE.md before doing anything else:
+
+| Command | What it needs from STATE.md |
+|---------|---------------------------|
+| gl:slice | Current slice, step, dependencies |
+| gl:status | All slice statuses, test counts |
+| gl:pause | Current slice and step for handoff |
+| gl:resume | Last session, resume file, current state |
+| gl:ship | All slices must be complete |
+| gl:quick | Test summary, current slice |
+| gl:add-slice | Slice list for dependency validation |
+
+### Writing (after every significant action)
+
+STATE.md is updated at these moments:
+
+| Event | What changes |
+|-------|-------------|
+| Tests written for slice | Step → "tests", test count updated |
+| Implementation complete | Step → "security" (or "complete" if no security scan) |
+| Security scan complete | Security test count updated |
+| Security fixes applied | Step → "complete" |
+| Slice marked complete | Status → "complete", progress bar updated |
+| Quick task completed | Test summary updated |
+| Decision made | Added to Decisions section |
+| Blocker found | Added to Blockers section |
+| Blocker resolved | Removed from Blockers |
+| Session paused | Session section updated, resume file set |
+
+### Size Constraint
+
+**Keep STATE.md under 80 lines.**
+
+It's a dashboard, not an archive. If it grows too large:
+- Keep only 3-5 recent decisions (move old ones to a decisions log)
+- Keep only active blockers
+- Compress completed slices into a summary line
+
+The goal: "Read once, know where we are." If it's too long, that fails.
+
+## Status Values
+
+### Slice Status
+
+| Status | Meaning |
+|--------|---------|
+| pending | Not started, deps may not be met |
+| ready | Dependencies met, can start |
+| tests | Tests written, waiting for implementation |
+| implementing | Implementer working |
+| security | Security scan in progress or pending |
+| fixing | Fixing security issues |
+| complete | All tests green, security clean |
+
+### Step (within current slice)
+
+Tracks exactly where we are in the TDD loop:
+```
+pending → tests → implementing → security → fixing → complete
+```
+
+## Progress Calculation
+
+```
+progress = (completed slices) / (total slices) × 100%
+
+Visual: 3/8 = [███░░░░░░░] 3/8 slices
+```
+
+Use block characters for the progress bar: `█` for complete, `░` for remaining.
