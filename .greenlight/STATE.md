@@ -14,20 +14,20 @@ Mode: yolo
 | S-03 | Conflict Handling | complete | 31 | 0 | none |
 | S-04 | Install | complete | 55 | 0 | S-01, S-02, S-03 |
 | S-05 | Check | complete | 52 | 0 | S-02, S-04 |
-| S-06 | Uninstall | pending | 0 | 0 | S-02, S-04 |
+| S-06 | Uninstall | complete | 28 | 0 | S-02, S-04 |
 | S-07 | CLI Dispatch | pending | 0 | 0 | S-01, S-04, S-05, S-06 |
 
-Progress: [█████░░░░░] 5/7 slices
+Progress: [██████░░░░] 6/7 slices
 
 ## Current
 
-Slice: S-05 — Check
+Slice: S-06 — Uninstall
 Step: complete
-Last activity: 2026-02-08 — S-05 complete (52 tests, 0 security findings)
+Last activity: 2026-02-08 — S-06 complete (28 tests, 0 security findings)
 
 ## Test Summary
 
-Total: 178 passing, 0 failing, 0 security
+Total: 206 passing, 0 failing, 0 security
 Last run: 2026-02-08
 
 ## Decisions
