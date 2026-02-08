@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/fs"
@@ -130,7 +131,7 @@ func (inst *Installer) writeVersionFile(targetDir string) error {
 
 // Uninstall removes greenlight-managed files from targetDir.
 // It only removes files listed in the manifest plus the version file.
-func Uninstall(targetDir string, stdout io.Writer) error {
+func Uninstall(targetDir, scope string, stdout io.Writer) error {
 	for _, relPath := range Manifest {
 		if relPath == "CLAUDE.md" {
 			// Don't remove CLAUDE.md — it may have user content
@@ -146,6 +147,31 @@ func Uninstall(targetDir string, stdout io.Writer) error {
 	// Remove version file
 	versionPath := filepath.Join(targetDir, ".greenlight-version")
 	os.Remove(versionPath)
+
+	// Remove conflict artifacts using asymmetric path resolution
+	var artifactDir string
+	if scope == "global" {
+		artifactDir = targetDir
+	} else if scope == "local" {
+		// For local scope, artifacts are in parent of targetDir
+		if targetDir == ".claude" {
+			artifactDir = "."
+		} else {
+			artifactDir = filepath.Dir(targetDir)
+		}
+	}
+
+	// Remove CLAUDE_GREENLIGHT.md if present
+	greenlightPath := filepath.Join(artifactDir, "CLAUDE_GREENLIGHT.md")
+	if err := os.Remove(greenlightPath); err == nil {
+		fmt.Fprintf(stdout, "  removed CLAUDE_GREENLIGHT.md\n")
+	}
+
+	// Remove CLAUDE.md.backup if present
+	backupPath := filepath.Join(artifactDir, "CLAUDE.md.backup")
+	if err := os.Remove(backupPath); err == nil {
+		fmt.Fprintf(stdout, "  removed CLAUDE.md.backup\n")
+	}
 
 	// Clean up empty directories (deepest first)
 	cleanEmptyDirs(targetDir, "commands/gl")
@@ -171,10 +197,12 @@ func cleanEmptyDirs(base, sub string) {
 }
 
 // Check verifies that all expected files are present and non-empty in targetDir.
-func Check(targetDir, scope string, stdout io.Writer) (ok bool) {
+// When verify=true, it also checks that file contents match contentFS using SHA-256.
+func Check(targetDir, scope string, stdout io.Writer, verify bool, contentFS fs.FS) (ok bool) {
 	ok = true
 	missing := 0
 	empty := 0
+	modified := 0
 
 	for _, relPath := range Manifest {
 		var destPath string
@@ -211,13 +239,56 @@ func Check(targetDir, scope string, stdout io.Writer) (ok bool) {
 			ok = false
 			continue
 		}
+
+		// If verify mode is enabled, check content hash
+		if verify {
+			if contentFS == nil {
+				// Cannot verify without contentFS
+				fmt.Fprintf(stdout, "  MODIFIED %s\n", relPath)
+				modified++
+				ok = false
+				continue
+			}
+
+			// Read file from disk
+			diskData, err := os.ReadFile(destPath)
+			if err != nil {
+				fmt.Fprintf(stdout, "  ERROR    %s: %v\n", relPath, err)
+				ok = false
+				continue
+			}
+
+			// Read expected content from contentFS
+			expectedData, err := fs.ReadFile(contentFS, relPath)
+			if err != nil {
+				// If file doesn't exist in contentFS, treat as modified
+				fmt.Fprintf(stdout, "  MODIFIED %s\n", relPath)
+				modified++
+				ok = false
+				continue
+			}
+
+			// Compare SHA-256 hashes
+			diskHash := sha256.Sum256(diskData)
+			expectedHash := sha256.Sum256(expectedData)
+			if diskHash != expectedHash {
+				fmt.Fprintf(stdout, "  MODIFIED %s\n", relPath)
+				modified++
+				ok = false
+				continue
+			}
+		}
 	}
 
 	// Check version file
 	versionPath := filepath.Join(targetDir, ".greenlight-version")
 	if _, err := os.Stat(versionPath); os.IsNotExist(err) {
 		fmt.Fprintf(stdout, "  MISSING  .greenlight-version\n")
-		ok = false
+		// In presence mode, missing version file fails the check
+		// In verify mode, version file is informational only
+		if !verify {
+			ok = false
+		}
 	} else {
 		data, _ := os.ReadFile(versionPath)
 		parts := strings.SplitN(string(data), "\n", 2)
@@ -227,11 +298,20 @@ func Check(targetDir, scope string, stdout io.Writer) (ok bool) {
 	}
 
 	total := len(Manifest)
-	present := total - missing
-	if ok {
-		fmt.Fprintf(stdout, "all %d files present\n", total)
+	verified := total - missing - empty - modified
+	if verify {
+		if ok {
+			fmt.Fprintf(stdout, "all %d files verified\n", total)
+		} else {
+			fmt.Fprintf(stdout, "%d/%d files verified (%d missing, %d empty, %d modified)\n", verified, total, missing, empty, modified)
+		}
 	} else {
-		fmt.Fprintf(stdout, "%d/%d files present (%d missing, %d empty)\n", present, total, missing, empty)
+		present := total - missing
+		if ok {
+			fmt.Fprintf(stdout, "all %d files present\n", total)
+		} else {
+			fmt.Fprintf(stdout, "%d/%d files present (%d missing, %d empty)\n", present, total, missing, empty)
+		}
 	}
 	return ok
 }

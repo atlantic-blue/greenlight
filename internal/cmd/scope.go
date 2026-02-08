@@ -21,12 +21,12 @@ func ParseScope(args []string) (scope string, remaining []string, err error) {
 	for _, arg := range args {
 		switch arg {
 		case "--global":
-			if scope != "" {
+			if scope != "" && scope != "global" {
 				return "", nil, ErrBothScopes
 			}
 			scope = "global"
 		case "--local":
-			if scope != "" {
+			if scope != "" && scope != "local" {
 				return "", nil, ErrBothScopes
 			}
 			scope = "local"
@@ -76,4 +76,18 @@ func ParseConflictStrategy(args []string) (installer.ConflictStrategy, []string,
 		}
 	}
 	return strategy, remaining, nil
+}
+
+// ParseVerifyFlag extracts --verify from args.
+// Returns true if --verify is present, false otherwise, along with remaining args.
+func ParseVerifyFlag(args []string) (verify bool, remaining []string) {
+	remaining = []string{}
+	for _, arg := range args {
+		if arg == "--verify" {
+			verify = true
+		} else {
+			remaining = append(remaining, arg)
+		}
+	}
+	return verify, remaining
 }
