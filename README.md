@@ -1,8 +1,25 @@
 # Greenlight
 
-TDD first development system for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue.svg)]()
+[![Architecture](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-blue.svg)]()
 
-Tests are the source of truth. Green means done. Security is built in, not bolted on.
+TDD-first development system for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Tests are the source of truth. Green means done. Security is built in, not bolted on.
+
+## Quick Start
+
+```bash
+npx greenlight-cc install --global
+```
+
+Or with Go:
+
+```bash
+go install github.com/atlantic-blue/greenlight@latest
+greenlight install --global
+```
+
+Then inside Claude Code, run `/gl:init` to get started.
 
 ## Why Greenlight
 
@@ -141,9 +158,12 @@ Each slice is independently testable, committable, and deployable.
 
 ## Typical Flow
 
-```
-map? --> init --> design --> slice 1 --> slice 2 --> ... --> ship
-```
+1. `/gl:map` — analyse existing codebase (optional, for brownfield projects)
+2. `/gl:init` — brief interview, scaffold project config
+3. `/gl:design` — system design: requirements, research, architecture, contracts
+4. `/gl:slice 1` — TDD loop: test, implement, security scan, verify, commit
+5. `/gl:slice 2` ... `/gl:slice N` — repeat for each slice
+6. `/gl:ship` — full security audit + deploy readiness
 
 ## Configuration
 
@@ -248,6 +268,28 @@ But as we used GSD on real projects, we kept running into a set of structural pr
 To be clear: Greenlight wouldn't exist without GSD. The ideas of using markdown files as agent prompts, orchestrating subagents through Claude Code's Task tool, managing state across sessions with handoff files, and building structured deviation rules for when agents encounter unexpected problems. These all came from GSD, and they're good ideas. Greenlight's contribution is layering TDD, contract first design, agent isolation, and integrated security on top of that foundation.
 
 GSD is optimised for speed and shipping. Greenlight is optimised for confidence and correctness. Different tools for different priorities.
+
+## Contributing
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/). All commit messages must follow the format:
+
+```
+<type>(<optional scope>): <description>
+```
+
+Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`
+
+Examples:
+- `feat: add user authentication`
+- `fix(installer): handle nil pointer`
+- `feat!: redesign config format` (breaking change)
+
+Commits are validated locally via [lefthook](https://github.com/evilmartians/lefthook) and in CI via [commitlint](https://commitlint.js.org/).
+
+```bash
+brew install lefthook
+lefthook install
+```
 
 ## License
 

@@ -49,3 +49,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: v${{ needs.release.outputs.version }}
+
+  npm-publish:
+    needs: [release, goreleaser]
+    if: needs.release.outputs.new-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Update package version
+        run: npm version ${{ needs.release.outputs.version }} --no-git-tag-version
+        working-directory: npm
+
+      - name: Publish to npm
+        run: npm publish
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
