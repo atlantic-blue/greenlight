@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,19 +9,25 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
+var ErrBothScopes = errors.New("cannot specify both --global and --local")
+var ErrNoScope = errors.New("must specify --global or --local")
+var ErrUnknownScope = errors.New("unknown scope")
+var ErrInvalidConflictStrategy = errors.New("invalid --on-conflict value")
+
 // ParseScope extracts --global or --local from args and returns the scope
 // along with any remaining arguments.
 func ParseScope(args []string) (scope string, remaining []string, err error) {
+	remaining = []string{}
 	for _, arg := range args {
 		switch arg {
 		case "--global":
 			if scope != "" {
-				return "", nil, fmt.Errorf("cannot specify both --global and --local")
+				return "", nil, ErrBothScopes
 			}
 			scope = "global"
 		case "--local":
 			if scope != "" {
-				return "", nil, fmt.Errorf("cannot specify both --global and --local")
+				return "", nil, ErrBothScopes
 			}
 			scope = "local"
 		default:
@@ -28,7 +35,7 @@ func ParseScope(args []string) (scope string, remaining []string, err error) {
 		}
 	}
 	if scope == "" {
-		return "", nil, fmt.Errorf("must specify --global or --local")
+		return "", nil, ErrNoScope
 	}
 	return scope, remaining, nil
 }
@@ -46,25 +53,27 @@ func ResolveDir(scope string) (string, error) {
 	case "local":
 		return ".claude", nil
 	default:
-		return "", fmt.Errorf("unknown scope: %s", scope)
+		return "", ErrUnknownScope
 	}
 }
 
 // ParseConflictStrategy extracts --on-conflict=<strategy> from args.
-// Returns the strategy and remaining args. Defaults to "keep".
-func ParseConflictStrategy(args []string) (installer.ConflictStrategy, []string) {
+// Returns the strategy, remaining args, and error. Defaults to "keep".
+func ParseConflictStrategy(args []string) (installer.ConflictStrategy, []string, error) {
 	strategy := installer.ConflictKeep
-	var remaining []string
+	remaining := []string{}
 	for _, arg := range args {
-		if len(arg) > 14 && arg[:14] == "--on-conflict=" {
+		if len(arg) >= 14 && arg[:14] == "--on-conflict=" {
 			val := arg[14:]
 			switch installer.ConflictStrategy(val) {
 			case installer.ConflictKeep, installer.ConflictReplace, installer.ConflictAppend:
 				strategy = installer.ConflictStrategy(val)
+			default:
+				return "", nil, ErrInvalidConflictStrategy
 			}
 		} else {
 			remaining = append(remaining, arg)
 		}
 	}
-	return strategy, remaining
+	return strategy, remaining, nil
 }
