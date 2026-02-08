@@ -1,0 +1,116 @@
+{
+  "project": "greenlight",
+  "description": "Dependency graph for Greenlight CLI stabilisation. Defines build order by slice with explicit dependencies and parallelism.",
+  "date": "2026-02-08",
+
+  "slices": {
+    "S-01": {
+      "name": "Version",
+      "description": "Show version information. Simplest slice — proves test infrastructure works.",
+      "packages": ["internal/version", "internal/cmd/version.go"],
+      "contracts": ["C-01", "C-11"],
+      "depends_on": [],
+      "test_files": ["internal/version/version_test.go", "internal/cmd/version_test.go"],
+      "wave": 1
+    },
+    "S-02": {
+      "name": "Flag Parsing",
+      "description": "Parse --global/--local scope, --on-conflict strategy, and --verify flag. Pure functions with no dependencies.",
+      "packages": ["internal/cmd/scope.go"],
+      "contracts": ["C-02", "C-03", "C-04"],
+      "depends_on": [],
+      "test_files": ["internal/cmd/scope_test.go"],
+      "wave": 1
+    },
+    "S-03": {
+      "name": "Conflict Handling",
+      "description": "Handle CLAUDE.md conflict strategies (keep, replace, append). Operates on temp directories, no dependencies.",
+      "packages": ["internal/installer/conflict.go"],
+      "contracts": ["C-05", "C-06"],
+      "depends_on": [],
+      "test_files": ["internal/installer/conflict_test.go"],
+      "wave": 1
+    },
+    "S-04": {
+      "name": "Install",
+      "description": "Install all manifest files to target directory with CLAUDE.md conflict handling.",
+      "packages": ["internal/installer/installer.go", "internal/cmd/install.go"],
+      "contracts": ["C-07", "C-08", "C-12"],
+      "depends_on": ["S-01", "S-02", "S-03"],
+      "test_files": ["internal/installer/installer_test.go", "internal/cmd/install_test.go"],
+      "wave": 2
+    },
+    "S-05": {
+      "name": "Check",
+      "description": "Verify installed files exist, are non-empty, and optionally match embedded content.",
+      "packages": ["internal/installer/installer.go", "internal/cmd/check.go"],
+      "contracts": ["C-09", "C-13"],
+      "depends_on": ["S-02", "S-04"],
+      "test_files": ["internal/installer/installer_test.go", "internal/cmd/check_test.go"],
+      "wave": 3
+    },
+    "S-06": {
+      "name": "Uninstall",
+      "description": "Remove installed files, conflict artifacts, version file, and empty directories.",
+      "packages": ["internal/installer/installer.go", "internal/cmd/uninstall.go"],
+      "contracts": ["C-10", "C-14"],
+      "depends_on": ["S-02", "S-04"],
+      "test_files": ["internal/installer/installer_test.go", "internal/cmd/uninstall_test.go"],
+      "wave": 3
+    },
+    "S-07": {
+      "name": "CLI Dispatch",
+      "description": "Top-level command dispatcher and entry point. Depends on all command handlers.",
+      "packages": ["internal/cli/cli.go", "main.go"],
+      "contracts": ["C-15", "C-16"],
+      "depends_on": ["S-01", "S-04", "S-05", "S-06"],
+      "test_files": ["internal/cli/cli_test.go"],
+      "wave": 4
+    }
+  },
+
+  "waves": {
+    "1": {
+      "description": "Independent foundations — no inter-slice dependencies. All three can be built and tested in parallel.",
+      "slices": ["S-01", "S-02", "S-03"],
+      "parallel": true
+    },
+    "2": {
+      "description": "Install depends on all Wave 1 slices (version for version file, flag parsing for args, conflict handling for CLAUDE.md).",
+      "slices": ["S-04"],
+      "parallel": false
+    },
+    "3": {
+      "description": "Check and Uninstall both depend on Install (need installed files to verify or remove). They are independent of each other and can run in parallel.",
+      "slices": ["S-05", "S-06"],
+      "parallel": true
+    },
+    "4": {
+      "description": "CLI Dispatch depends on all command handlers. Final integration layer.",
+      "slices": ["S-07"],
+      "parallel": false
+    }
+  },
+
+  "edges": [
+    { "from": "S-04", "to": "S-01", "reason": "Install writes version file using version.Version, version.GitCommit, version.BuildDate" },
+    { "from": "S-04", "to": "S-02", "reason": "RunInstall calls ParseScope, ResolveDir, ParseConflictStrategy" },
+    { "from": "S-04", "to": "S-03", "reason": "Install delegates CLAUDE.md writing to handleConflict" },
+    { "from": "S-05", "to": "S-02", "reason": "RunCheck calls ParseScope, ResolveDir" },
+    { "from": "S-05", "to": "S-04", "reason": "Check verifies files that Install creates; tests need installed state" },
+    { "from": "S-06", "to": "S-02", "reason": "RunUninstall calls ParseScope, ResolveDir" },
+    { "from": "S-06", "to": "S-04", "reason": "Uninstall removes files that Install creates; tests need installed state" },
+    { "from": "S-07", "to": "S-01", "reason": "CLI dispatches to RunVersion" },
+    { "from": "S-07", "to": "S-04", "reason": "CLI dispatches to RunInstall" },
+    { "from": "S-07", "to": "S-05", "reason": "CLI dispatches to RunCheck" },
+    { "from": "S-07", "to": "S-06", "reason": "CLI dispatches to RunUninstall" }
+  ],
+
+  "import_graph": {
+    "main": ["internal/cli"],
+    "internal/cli": ["internal/cmd"],
+    "internal/cmd": ["internal/installer", "internal/version"],
+    "internal/installer": ["internal/version"],
+    "internal/version": []
+  }
+}
