@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/atlantic-blue/greenlight/compare/v1.0.0...v1.0.1) (2026-02-08)
+
+
+### Bug Fixes
+
+* trigger initial release ([fee9997](https://github.com/atlantic-blue/greenlight/commit/fee9997a9ad8f1622ef2087c86acb05029ff20ee))
+
 # 1.0.0 (2026-02-08)
 
 
