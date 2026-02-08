@@ -25,7 +25,7 @@ func Run(args []string, contentFS fs.FS) int {
 	case "uninstall":
 		return cmd.RunUninstall(args[1:], stdout)
 	case "check":
-		return cmd.RunCheck(args[1:], stdout)
+		return cmd.RunCheck(args[1:], contentFS, stdout)
 	case "version":
 		return cmd.RunVersion(stdout)
 	case "help", "--help", "-h":

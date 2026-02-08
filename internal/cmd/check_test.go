@@ -385,7 +385,7 @@ func TestRunCheck_GlobalScope_UsesHomeDirectory(t *testing.T) {
 	// We can't easily test actual home directory without side effects,
 	// but we can verify that --global flag is accepted and processed
 	var buf bytes.Buffer
-	exitCode := cmd.RunCheck([]string{"--global"}, contentFS, &buf)
+	_ = cmd.RunCheck([]string{"--global"}, contentFS, &buf)
 
 	// Exit code will likely be 1 because files aren't installed in home/.claude
 	// But we're testing that it attempts to check the right location
@@ -818,7 +818,7 @@ func TestRunCheck_HandlesResolveDirErrors(t *testing.T) {
 	var buf bytes.Buffer
 	// Using --global will call ResolveDir("global") which uses os.UserHomeDir()
 	// This should succeed (unless home directory truly cannot be determined)
-	exitCode := cmd.RunCheck([]string{"--global"}, contentFS, &buf)
+	_ = cmd.RunCheck([]string{"--global"}, contentFS, &buf)
 
 	// We expect exit code 1 because files aren't installed in home directory
 	// But no error about home directory resolution

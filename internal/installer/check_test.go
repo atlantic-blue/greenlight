@@ -480,7 +480,7 @@ func TestCheck_SummaryAlwaysLastLine(t *testing.T) {
 			setup: func(t *testing.T, targetDir string) {
 				os.WriteFile(filepath.Join(targetDir, "agents/gl-debugger.md"), []byte{}, 0o644)
 			},
-			expectedLast: "25/26 files present (0 missing, 1 empty)\n",
+			expectedLast: "26/26 files present (0 missing, 1 empty)\n",
 		},
 		{
 			name: "version file missing",
@@ -801,7 +801,7 @@ func TestCheck_VersionPrintedBeforeSummary(t *testing.T) {
 }
 
 func TestCheck_EmptyDirectory_AllFilesMissing(t *testing.T) {
-	contentFS := buildTestFS()
+	_ = buildTestFS()
 	targetDir := t.TempDir() // Empty directory
 
 	var buf bytes.Buffer
@@ -956,7 +956,7 @@ func TestCheck_EmptyAndMissingBothCounted(t *testing.T) {
 	}
 
 	output := buf.String()
-	expectedSummary := "24/26 files present (1 missing, 1 empty)\n"
+	expectedSummary := "25/26 files present (1 missing, 1 empty)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}

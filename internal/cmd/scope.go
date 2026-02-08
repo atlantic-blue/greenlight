@@ -77,3 +77,17 @@ func ParseConflictStrategy(args []string) (installer.ConflictStrategy, []string,
 	}
 	return strategy, remaining, nil
 }
+
+// ParseVerifyFlag extracts --verify from args.
+// Returns true if --verify is present, false otherwise, along with remaining args.
+func ParseVerifyFlag(args []string) (verify bool, remaining []string) {
+	remaining = []string{}
+	for _, arg := range args {
+		if arg == "--verify" {
+			verify = true
+		} else {
+			remaining = append(remaining, arg)
+		}
+	}
+	return verify, remaining
+}
