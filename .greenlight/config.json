@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "mode": "yolo",
+  "model_profile": "balanced",
+  "model_overrides": {},
+  "profiles": {
+    "quality": {
+      "architect": "opus",
+      "designer": "opus",
+      "test_writer": "opus",
+      "implementer": "opus",
+      "security": "opus",
+      "debugger": "opus",
+      "verifier": "opus",
+      "codebase_mapper": "opus"
+    },
+    "balanced": {
+      "architect": "opus",
+      "designer": "opus",
+      "test_writer": "sonnet",
+      "implementer": "sonnet",
+      "security": "sonnet",
+      "debugger": "sonnet",
+      "verifier": "sonnet",
+      "codebase_mapper": "sonnet"
+    },
+    "budget": {
+      "architect": "sonnet",
+      "designer": "sonnet",
+      "test_writer": "sonnet",
+      "implementer": "sonnet",
+      "security": "haiku",
+      "debugger": "sonnet",
+      "verifier": "haiku",
+      "codebase_mapper": "haiku"
+    }
+  },
+  "workflow": {
+    "security_scan": true,
+    "visual_checkpoint": true,
+    "auto_parallel": true,
+    "max_implementation_retries": 3,
+    "max_security_retries": 2,
+    "run_full_suite_after_slice": true
+  },
+  "test": {
+    "command": "go test ./...",
+    "filter_flag": "-run",
+    "coverage_command": "go test -cover ./...",
+    "security_filter": "security"
+  },
+  "project": {
+    "name": "greenlight",
+    "stack": "Go 1.24 (stdlib only)",
+    "src_dir": "internal",
+    "test_dir": "internal"
+  }
+}

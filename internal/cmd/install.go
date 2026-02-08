@@ -10,7 +10,12 @@ import (
 
 // RunInstall handles the "install" subcommand.
 func RunInstall(args []string, contentFS fs.FS, stdout io.Writer) int {
-	strategy, args := ParseConflictStrategy(args)
+	strategy, args, err := ParseConflictStrategy(args)
+	if err != nil {
+		fmt.Fprintf(stdout, "error: %v\n", err)
+		return 1
+	}
+
 	scope, _, err := ParseScope(args)
 	if err != nil {
 		fmt.Fprintf(stdout, "error: %v\n", err)
