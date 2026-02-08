@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/atlantic-blue/greenlight/compare/v1.0.1...v1.1.0) (2026-02-08)
+
+
+### Features
+
+* use greenlight for hardening ([#1](https://github.com/atlantic-blue/greenlight/issues/1)) ([40997aa](https://github.com/atlantic-blue/greenlight/commit/40997aa051befc4de2bb63d45228ce29072614df))
+
 ## [1.0.1](https://github.com/atlantic-blue/greenlight/compare/v1.0.0...v1.0.1) (2026-02-08)
 
 
