@@ -19,7 +19,9 @@ Template for `.greenlight/config.json` — project configuration.
       "security": "opus",
       "debugger": "opus",
       "verifier": "opus",
-      "codebase_mapper": "opus"
+      "codebase_mapper": "opus",
+      "assessor": "opus",
+      "wrapper": "opus"
     },
     "balanced": {
       "architect": "opus",
@@ -29,7 +31,9 @@ Template for `.greenlight/config.json` — project configuration.
       "security": "sonnet",
       "debugger": "sonnet",
       "verifier": "sonnet",
-      "codebase_mapper": "sonnet"
+      "codebase_mapper": "sonnet",
+      "assessor": "sonnet",
+      "wrapper": "sonnet"
     },
     "budget": {
       "architect": "sonnet",
@@ -39,7 +43,9 @@ Template for `.greenlight/config.json` — project configuration.
       "security": "haiku",
       "debugger": "sonnet",
       "verifier": "haiku",
-      "codebase_mapper": "haiku"
+      "codebase_mapper": "haiku",
+      "assessor": "haiku",
+      "wrapper": "sonnet"
     }
   },
   "workflow": {
@@ -118,7 +124,7 @@ Set an agent to `null` or remove the key to revert to the profile default.
 
 The three built-in profiles. Each maps agent names to model identifiers.
 
-Agent names: `architect`, `designer`, `test_writer`, `implementer`, `security`, `debugger`, `verifier`, `codebase_mapper`.
+Agent names: `architect`, `designer`, `test_writer`, `implementer`, `security`, `debugger`, `verifier`, `codebase_mapper`, `assessor`, `wrapper`.
 
 Model identifiers: `opus`, `sonnet`, `haiku`.
 
