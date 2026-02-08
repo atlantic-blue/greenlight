@@ -17,6 +17,11 @@ allowed-tools: [Read, Bash, Glob]
 │  /gl:map               Analyse existing codebase first       │
 │  /gl:settings          Configure models, mode, options       │
 │                                                              │
+│  BROWNFIELD                                                  │
+│  /gl:assess            Gap analysis + risk assessment →      │
+│                        ASSESS.md                             │
+│  /gl:wrap              Extract contracts + locking tests     │
+│                                                              │
 │  BUILD                                                       │
 │  /gl:slice <N>         TDD loop: test → implement →          │
 │                        security → verify → commit            │
@@ -32,7 +37,8 @@ allowed-tools: [Read, Bash, Glob]
 │  /gl:ship              Full audit + deploy readiness         │
 │                                                              │
 │  FLOW                                                        │
-│  map? → init → design → slice 1 → slice 2 → ... → ship      │
+│  map? → assess? → init → design → wrap? → slice 1 → ... →   │
+│  ship                                                        │
 │                                                              │
 │  Tests are the source of truth. Green means done.            │
 │  Security is built in, not bolted on.                        │

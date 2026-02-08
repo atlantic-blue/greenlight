@@ -53,6 +53,8 @@ Display:
 │  debugger         {model}    ({source})             │
 │  verifier         {model}    ({source})             │
 │  codebase_mapper  {model}    ({source})             │
+│  assessor         {model}    ({source})             │
+│  wrapper          {model}    ({source})             │
 │                                                     │
 │  To change:                                         │
 │  /gl:settings profile <name>                        │
@@ -84,6 +86,8 @@ Switching to {new_profile}:
   debugger         {old} → {new}
   verifier         {old} → {new}
   codebase_mapper  {old} → {new}
+  assessor         {old} → {new}
+  wrapper          {old} → {new}
 
 Note: {N} agent overrides are still active and take precedence.
 {list any overrides}
@@ -95,7 +99,7 @@ If confirmed, update `model_profile` in config.json. Do NOT clear existing `mode
 
 ## Override Agent Model
 
-Valid agents: `architect`, `designer`, `test_writer`, `implementer`, `security`, `debugger`, `verifier`, `codebase_mapper`.
+Valid agents: `architect`, `designer`, `test_writer`, `implementer`, `security`, `debugger`, `verifier`, `codebase_mapper`, `assessor`, `wrapper`.
 
 Valid models: `opus`, `sonnet`, `haiku`.
 
