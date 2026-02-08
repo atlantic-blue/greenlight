@@ -11,10 +11,11 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 26 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 30 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
+		"agents/gl-assessor.md":                    &fstest.MapFile{Data: []byte("# Assessor\n")},
 		"agents/gl-codebase-mapper.md":             &fstest.MapFile{Data: []byte("# Codebase Mapper\n")},
 		"agents/gl-debugger.md":                    &fstest.MapFile{Data: []byte("# Debugger\n")},
 		"agents/gl-designer.md":                    &fstest.MapFile{Data: []byte("# Designer\n")},
@@ -22,7 +23,9 @@ func buildTestFS() fstest.MapFS {
 		"agents/gl-security.md":                    &fstest.MapFile{Data: []byte("# Security\n")},
 		"agents/gl-test-writer.md":                 &fstest.MapFile{Data: []byte("# Test Writer\n")},
 		"agents/gl-verifier.md":                    &fstest.MapFile{Data: []byte("# Verifier\n")},
+		"agents/gl-wrapper.md":                     &fstest.MapFile{Data: []byte("# Wrapper\n")},
 		"commands/gl/add-slice.md":                 &fstest.MapFile{Data: []byte("# Add Slice\n")},
+		"commands/gl/assess.md":                    &fstest.MapFile{Data: []byte("# Assess\n")},
 		"commands/gl/design.md":                    &fstest.MapFile{Data: []byte("# Design\n")},
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
@@ -34,6 +37,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/ship.md":                      &fstest.MapFile{Data: []byte("# Ship\n")},
 		"commands/gl/slice.md":                     &fstest.MapFile{Data: []byte("# Slice\n")},
 		"commands/gl/status.md":                    &fstest.MapFile{Data: []byte("# Status\n")},
+		"commands/gl/wrap.md":                      &fstest.MapFile{Data: []byte("# Wrap\n")},
 		"references/checkpoint-protocol.md":        &fstest.MapFile{Data: []byte("# Checkpoint Protocol\n")},
 		"references/deviation-rules.md":            &fstest.MapFile{Data: []byte("# Deviation Rules\n")},
 		"references/verification-patterns.md":      &fstest.MapFile{Data: []byte("# Verification Patterns\n")},
@@ -624,5 +628,187 @@ func TestInstall_CLAUDEPrintedWithCorrectPath(t *testing.T) {
 				t.Errorf("output missing CLAUDE.md installation message: %q", output)
 			}
 		})
+	}
+}
+
+// C-33 Tests: ManifestBrownfieldUpdate
+
+func TestManifest_Contains30Entries(t *testing.T) {
+	if len(installer.Manifest) != 30 {
+		t.Errorf("expected 30 manifest entries, got %d", len(installer.Manifest))
+	}
+}
+
+func TestManifest_ContainsBrownfieldAgents(t *testing.T) {
+	expectedAgents := []string{
+		"agents/gl-assessor.md",
+		"agents/gl-wrapper.md",
+	}
+
+	for _, expectedAgent := range expectedAgents {
+		found := false
+		for _, entry := range installer.Manifest {
+			if entry == expectedAgent {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("manifest missing brownfield agent: %s", expectedAgent)
+		}
+	}
+}
+
+func TestManifest_ContainsBrownfieldCommands(t *testing.T) {
+	expectedCommands := []string{
+		"commands/gl/assess.md",
+		"commands/gl/wrap.md",
+	}
+
+	for _, expectedCommand := range expectedCommands {
+		found := false
+		for _, entry := range installer.Manifest {
+			if entry == expectedCommand {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("manifest missing brownfield command: %s", expectedCommand)
+		}
+	}
+}
+
+func TestManifest_CLAUDEIsLastEntry(t *testing.T) {
+	if len(installer.Manifest) == 0 {
+		t.Fatal("manifest is empty")
+	}
+
+	lastEntry := installer.Manifest[len(installer.Manifest)-1]
+	if lastEntry != "CLAUDE.md" {
+		t.Errorf("expected CLAUDE.md to be last entry, got: %s", lastEntry)
+	}
+}
+
+func TestManifest_AgentsSectionAlphabeticallyOrdered(t *testing.T) {
+	var agentEntries []string
+	for _, entry := range installer.Manifest {
+		if strings.HasPrefix(entry, "agents/") {
+			agentEntries = append(agentEntries, entry)
+		}
+	}
+
+	expectedOrder := []string{
+		"agents/gl-architect.md",
+		"agents/gl-assessor.md",
+		"agents/gl-codebase-mapper.md",
+		"agents/gl-debugger.md",
+		"agents/gl-designer.md",
+		"agents/gl-implementer.md",
+		"agents/gl-security.md",
+		"agents/gl-test-writer.md",
+		"agents/gl-verifier.md",
+		"agents/gl-wrapper.md",
+	}
+
+	if len(agentEntries) != len(expectedOrder) {
+		t.Errorf("expected %d agent entries, got %d", len(expectedOrder), len(agentEntries))
+	}
+
+	for i, expected := range expectedOrder {
+		if i >= len(agentEntries) {
+			t.Errorf("missing agent entry at index %d: %s", i, expected)
+			continue
+		}
+		if agentEntries[i] != expected {
+			t.Errorf("agent entry at index %d: expected %s, got %s", i, expected, agentEntries[i])
+		}
+	}
+}
+
+func TestManifest_CommandsSectionAlphabeticallyOrdered(t *testing.T) {
+	var commandEntries []string
+	for _, entry := range installer.Manifest {
+		if strings.HasPrefix(entry, "commands/gl/") {
+			commandEntries = append(commandEntries, entry)
+		}
+	}
+
+	expectedOrder := []string{
+		"commands/gl/add-slice.md",
+		"commands/gl/assess.md",
+		"commands/gl/design.md",
+		"commands/gl/help.md",
+		"commands/gl/init.md",
+		"commands/gl/map.md",
+		"commands/gl/pause.md",
+		"commands/gl/quick.md",
+		"commands/gl/resume.md",
+		"commands/gl/settings.md",
+		"commands/gl/ship.md",
+		"commands/gl/slice.md",
+		"commands/gl/status.md",
+		"commands/gl/wrap.md",
+	}
+
+	if len(commandEntries) != len(expectedOrder) {
+		t.Errorf("expected %d command entries, got %d", len(expectedOrder), len(commandEntries))
+	}
+
+	for i, expected := range expectedOrder {
+		if i >= len(commandEntries) {
+			t.Errorf("missing command entry at index %d: %s", i, expected)
+			continue
+		}
+		if commandEntries[i] != expected {
+			t.Errorf("command entry at index %d: expected %s, got %s", i, expected, commandEntries[i])
+		}
+	}
+}
+
+func TestManifest_AllBrownfieldEntriesPresent(t *testing.T) {
+	brownfieldEntries := []string{
+		"agents/gl-assessor.md",
+		"agents/gl-wrapper.md",
+		"commands/gl/assess.md",
+		"commands/gl/wrap.md",
+	}
+
+	manifestMap := make(map[string]bool)
+	for _, entry := range installer.Manifest {
+		manifestMap[entry] = true
+	}
+
+	for _, brownfieldEntry := range brownfieldEntries {
+		if !manifestMap[brownfieldEntry] {
+			t.Errorf("manifest missing brownfield entry: %s", brownfieldEntry)
+		}
+	}
+}
+
+func TestManifest_BrownfieldEntriesInstalledCorrectly(t *testing.T) {
+	contentFS := buildTestFS()
+	var buf bytes.Buffer
+	targetDir := t.TempDir()
+
+	inst := installer.New(contentFS, &buf)
+	err := inst.Install(targetDir, "global", installer.ConflictKeep)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	brownfieldFiles := []string{
+		"agents/gl-assessor.md",
+		"agents/gl-wrapper.md",
+		"commands/gl/assess.md",
+		"commands/gl/wrap.md",
+	}
+
+	for _, relPath := range brownfieldFiles {
+		destPath := filepath.Join(targetDir, relPath)
+		if _, err := os.Stat(destPath); os.IsNotExist(err) {
+			t.Errorf("brownfield file %s was not installed", relPath)
+		}
 	}
 }
