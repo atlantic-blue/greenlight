@@ -17,18 +17,18 @@ Mode: yolo
 | S-06 | Uninstall | complete | 28 | 0 | S-02, S-04 |
 | S-07 | CLI Dispatch | complete | 22 | 0 | S-01, S-04, S-05, S-06 |
 | S-12 | Infrastructure & Config | complete | 8 | 0 | none |
-| S-08 | Codebase Assessment | pending | 0 | 0 | S-12 |
-| S-09 | Boundary Wrapping | pending | 0 | 0 | S-12 |
-| S-10 | Brownfield-Aware Commands | pending | 0 | 0 | S-12 |
+| S-08 | Codebase Assessment | complete | 0 | 0 | S-12 |
+| S-09 | Boundary Wrapping | complete | 0 | 0 | S-12 |
+| S-10 | Brownfield-Aware Commands | complete | 0 | 0 | S-12 |
 | S-11 | Locking-to-Integration | pending | 0 | 0 | S-09, S-12 |
 
-Progress: [████████░░░░] 8/12 slices
+Progress: [███████████░] 11/12 slices
 
 ## Current
 
-Slice: S-08, S-09, S-10 — Wave 6 (parallel)
+Slice: S-11 — Locking-to-Integration (Wave 7)
 Step: pending
-Last activity: 2026-02-08 — S-12 complete (8 tests, all green)
+Last activity: 2026-02-08 — Wave 6 complete (S-08, S-09, S-10 — prompt files written)
 
 ## Test Summary
 
