@@ -48,6 +48,34 @@ You do NOT receive:
 - Implementation details
 - Database queries or schemas beyond what contracts define
 - Internal function signatures
+- Locking test source code (only names/descriptions when slice has `wraps` field)
+
+### Additional Context for Wraps Slices
+
+When a slice has a `wraps` field (locking-to-integration transition), you also receive:
+
+```xml
+<locked_behaviours>
+Boundary: {boundary_name}
+Locking tests:
+  - [LOCK] {test name 1}
+  - [LOCK] {test name 2}
+  - [LOCK] {test name 3}
+</locked_behaviours>
+```
+
+These are the **names only** of existing locking tests. You do NOT receive the test source code (isolation is preserved).
+
+**Superset requirement:** Your integration tests MUST cover at least all behaviours that the locking tests cover. Use the test names to understand what behaviours are locked, then write integration tests that cover all of them plus any new behaviours defined in the contracts.
+
+For example, if a locking test is named `[LOCK] should return 401 when credentials are invalid`, your integration tests must include a test that verifies the same behaviour.
+
+**Important distinctions:**
+- Locking test names are informational context, not a test specification
+- Write integration tests from the contracts (as always), using locking test names as a coverage checklist
+- Integration tests go in `tests/integration/` as normal, NOT in `tests/locking/`
+- Your tests follow standard naming (no `[LOCK]` prefix)
+- The locking tests will be deleted after verification — your integration tests replace them
 
 </inputs>
 
@@ -314,6 +342,12 @@ Before returning to the orchestrator, verify EVERY item:
 - [ ] No test is tautological (asserting what was just set up)
 - [ ] Every test fails without implementation (will be verified by orchestrator)
 - [ ] Test names form a readable specification
+
+### Wraps Slices (if `locked_behaviours` context provided)
+- [ ] Every locking test name has a corresponding integration test
+- [ ] Integration tests are a superset of locked behaviours (cover all, plus new)
+- [ ] No `[LOCK]` prefix used in integration test names (standard naming only)
+- [ ] Tests go in `tests/integration/`, NOT `tests/locking/`
 
 ### Summary
 
