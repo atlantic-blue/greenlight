@@ -165,6 +165,29 @@ done
 ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null && echo "OK: lock file" || echo "MISSING: lock file"
 ```
 
+### CI Portability Check
+
+Tests must pass on CI, not just locally. Scan for patterns that break on other machines:
+
+```bash
+# Hardcoded absolute paths in test files (breaks CI)
+grep -rn "/Users/\|/home/\|C:\\\\Users\\\\" . --include="*_test.go" --include="*.test.*" --include="*.spec.*" | head -20 || echo "CLEAN"
+
+# Hardcoded localhost ports without env override
+grep -rn "localhost:[0-9]\|127\.0\.0\.1:[0-9]" . --include="*_test.go" --include="*.test.*" --include="*.spec.*" | grep -v "// ci-ok" | head -10 || echo "CLEAN"
+
+# OS-specific path separators in test assertions
+grep -rn '\\\\' . --include="*_test.go" --include="*.test.*" | grep -v "regexp\|regex\|escape" | head -10 || echo "CLEAN"
+```
+
+**If hardcoded paths found:** NO-GO. Tests will pass locally but fail in CI. Fix by resolving paths relative to the test file location (e.g. `runtime.Caller(0)` in Go, `__dirname` in Node, `Path(__file__)` in Python).
+
+**If CI workflow exists**, verify tests actually run there:
+```bash
+# Check CI config exists and runs tests
+ls .github/workflows/*.yml .gitlab-ci.yml Jenkinsfile 2>/dev/null
+```
+
 ## Step 5: Report
 
 ```
@@ -175,6 +198,7 @@ ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null && echo "OK: lock file
 │  Build:        {result}                    {ok} │
 │  Lint:         {result}                    {ok} │
 │  Tests:        {N} passing                 {ok} │
+│  CI Portable:  {result}                    {ok} │
 │  Security:     {N} tests, {N} audit issues {ok} │
 │  Verification: {result}                    {ok} │
 │  Dependencies: {N} vulnerabilities         {ok} │

@@ -2,15 +2,26 @@ package installer_test
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// projectRoot returns the absolute path to the repository root.
+// Works on any machine by walking up from this test file's location.
+func projectRoot() string {
+	_, filename, _, _ := runtime.Caller(0)
+	// This file is at internal/installer/manifest_docs_test.go
+	// Go up 3 levels: installer -> internal -> repo root
+	return filepath.Dir(filepath.Dir(filepath.Dir(filename)))
+}
 
 // C-39 Tests: HelpInsightSection
 // These tests verify the markdown content of help.md contains the required INSIGHT section
 
 func TestHelpMd_ContainsInsightSection(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -23,7 +34,7 @@ func TestHelpMd_ContainsInsightSection(t *testing.T) {
 }
 
 func TestHelpMd_InsightSectionBetweenMonitorAndShip(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -55,7 +66,7 @@ func TestHelpMd_InsightSectionBetweenMonitorAndShip(t *testing.T) {
 }
 
 func TestHelpMd_InsightSectionContainsRoadmapCommand(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -86,7 +97,7 @@ func TestHelpMd_InsightSectionContainsRoadmapCommand(t *testing.T) {
 }
 
 func TestHelpMd_InsightSectionContainsChangelogCommand(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -117,7 +128,7 @@ func TestHelpMd_InsightSectionContainsChangelogCommand(t *testing.T) {
 }
 
 func TestHelpMd_ContainsThreeViewsTagline(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -139,7 +150,7 @@ func TestHelpMd_ContainsThreeViewsTagline(t *testing.T) {
 }
 
 func TestHelpMd_FlowLineContainsDocumentationSteps(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -159,7 +170,7 @@ func TestHelpMd_FlowLineContainsDocumentationSteps(t *testing.T) {
 }
 
 func TestHelpMd_BuildSectionSliceIncludesSummaryStep(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -190,7 +201,7 @@ func TestHelpMd_BuildSectionSliceIncludesSummaryStep(t *testing.T) {
 }
 
 func TestHelpMd_AllExistingSectionsPresent(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/help.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/help.md"))
 	if err != nil {
 		t.Fatalf("failed to read help.md: %v", err)
 	}
@@ -216,7 +227,7 @@ func TestHelpMd_AllExistingSectionsPresent(t *testing.T) {
 // C-40 Tests: StatusDocumentationReference
 
 func TestStatusMd_ContainsDocumentationReferenceLine(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/status.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/status.md"))
 	if err != nil {
 		t.Fatalf("failed to read status.md: %v", err)
 	}
@@ -238,7 +249,7 @@ func TestStatusMd_ContainsDocumentationReferenceLine(t *testing.T) {
 }
 
 func TestStatusMd_DocumentationReferenceFormat(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/status.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/status.md"))
 	if err != nil {
 		t.Fatalf("failed to read status.md: %v", err)
 	}
@@ -256,7 +267,7 @@ func TestStatusMd_DocumentationReferenceFormat(t *testing.T) {
 // C-36 Tests: DesignRoadmapProduction
 
 func TestDesignMd_ContainsRoadmapProductionInstructions(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -269,7 +280,7 @@ func TestDesignMd_ContainsRoadmapProductionInstructions(t *testing.T) {
 }
 
 func TestDesignMd_ReferencesRoadmapAfterDesignApproval(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -289,7 +300,7 @@ func TestDesignMd_ReferencesRoadmapAfterDesignApproval(t *testing.T) {
 }
 
 func TestDesignMd_ContainsMermaidDiagramReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -308,7 +319,7 @@ func TestDesignMd_ContainsMermaidDiagramReference(t *testing.T) {
 // C-37 Tests: DesignDecisionsSeeding
 
 func TestDesignMd_ContainsDecisionsProductionInstructions(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -321,7 +332,7 @@ func TestDesignMd_ContainsDecisionsProductionInstructions(t *testing.T) {
 }
 
 func TestDesignMd_ReferencesDecisionSeeding(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -340,7 +351,7 @@ func TestDesignMd_ReferencesDecisionSeeding(t *testing.T) {
 }
 
 func TestDesignMd_ContainsDecisionLogTableStructure(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -358,7 +369,7 @@ func TestDesignMd_ContainsDecisionLogTableStructure(t *testing.T) {
 }
 
 func TestDesignMd_ContainsBothRoadmapAndDecisions(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -381,7 +392,7 @@ func TestDesignMd_ContainsBothRoadmapAndDecisions(t *testing.T) {
 // These tests verify slice.md contains summary generation instructions after verification
 
 func TestSliceMd_ContainsSummaryGenerationStep(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -394,7 +405,7 @@ func TestSliceMd_ContainsSummaryGenerationStep(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesSummaryAfterVerification(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -409,7 +420,7 @@ func TestSliceMd_ReferencesSummaryAfterVerification(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesSpawningTaskForSummary(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -423,7 +434,7 @@ func TestSliceMd_ReferencesSpawningTaskForSummary(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesSummariesDirectory(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -436,7 +447,7 @@ func TestSliceMd_ReferencesSummariesDirectory(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesSummaryFileNaming(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -450,7 +461,7 @@ func TestSliceMd_ReferencesSummaryFileNaming(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesStructuredDataForSummary(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -468,7 +479,7 @@ func TestSliceMd_ReferencesStructuredDataForSummary(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesRoadmapUpdateAfterSummary(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -482,7 +493,7 @@ func TestSliceMd_ReferencesRoadmapUpdateAfterSummary(t *testing.T) {
 }
 
 func TestSliceMd_SummaryIsNonBlocking(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -502,7 +513,7 @@ func TestSliceMd_SummaryIsNonBlocking(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesProductLanguageForSummary(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -520,7 +531,7 @@ func TestSliceMd_ReferencesProductLanguageForSummary(t *testing.T) {
 // These tests verify wrap.md contains summary generation instructions after commit
 
 func TestWrapMd_ContainsSummaryGenerationStep(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -533,7 +544,7 @@ func TestWrapMd_ContainsSummaryGenerationStep(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesSummaryAfterCommit(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -548,7 +559,7 @@ func TestWrapMd_ReferencesSummaryAfterCommit(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesSpawningTaskForWrapSummary(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -562,7 +573,7 @@ func TestWrapMd_ReferencesSpawningTaskForWrapSummary(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesWrapSummaryNaming(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -576,7 +587,7 @@ func TestWrapMd_ReferencesWrapSummaryNaming(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesWrapSummariesDirectory(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -589,7 +600,7 @@ func TestWrapMd_ReferencesWrapSummariesDirectory(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesRoadmapWrapProgressUpdate(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -607,7 +618,7 @@ func TestWrapMd_ReferencesRoadmapWrapProgressUpdate(t *testing.T) {
 }
 
 func TestWrapMd_WrapSummaryIsNonBlocking(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -630,7 +641,7 @@ func TestWrapMd_WrapSummaryIsNonBlocking(t *testing.T) {
 // These tests verify quick.md contains summary generation instructions
 
 func TestQuickMd_ContainsSummaryGenerationStep(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/quick.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/quick.md"))
 	if err != nil {
 		t.Fatalf("failed to read quick.md: %v", err)
 	}
@@ -643,7 +654,7 @@ func TestQuickMd_ContainsSummaryGenerationStep(t *testing.T) {
 }
 
 func TestQuickMd_ReferencesQuickSummaryNaming(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/quick.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/quick.md"))
 	if err != nil {
 		t.Fatalf("failed to read quick.md: %v", err)
 	}
@@ -657,7 +668,7 @@ func TestQuickMd_ReferencesQuickSummaryNaming(t *testing.T) {
 }
 
 func TestQuickMd_ReferencesQuickSummariesDirectory(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/quick.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/quick.md"))
 	if err != nil {
 		t.Fatalf("failed to read quick.md: %v", err)
 	}
@@ -670,7 +681,7 @@ func TestQuickMd_ReferencesQuickSummariesDirectory(t *testing.T) {
 }
 
 func TestQuickMd_ReferencesSpawningTaskForQuickSummary(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/quick.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/quick.md"))
 	if err != nil {
 		t.Fatalf("failed to read quick.md: %v", err)
 	}
@@ -684,7 +695,7 @@ func TestQuickMd_ReferencesSpawningTaskForQuickSummary(t *testing.T) {
 }
 
 func TestQuickMd_ReferencesDecisionAppend(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/quick.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/quick.md"))
 	if err != nil {
 		t.Fatalf("failed to read quick.md: %v", err)
 	}
@@ -698,7 +709,7 @@ func TestQuickMd_ReferencesDecisionAppend(t *testing.T) {
 }
 
 func TestQuickMd_QuickSummaryIsNonBlocking(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/quick.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/quick.md"))
 	if err != nil {
 		t.Fatalf("failed to read quick.md: %v", err)
 	}
@@ -718,7 +729,7 @@ func TestQuickMd_QuickSummaryIsNonBlocking(t *testing.T) {
 }
 
 func TestQuickMd_ReferencesTimestampInSummary(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/quick.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/quick.md"))
 	if err != nil {
 		t.Fatalf("failed to read quick.md: %v", err)
 	}
@@ -736,7 +747,7 @@ func TestQuickMd_ReferencesTimestampInSummary(t *testing.T) {
 // These tests verify slice.md contains decision aggregation instructions
 
 func TestSliceMd_ContainsDecisionAggregationStep(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -751,7 +762,7 @@ func TestSliceMd_ContainsDecisionAggregationStep(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesCollectingDecisionsFromAgents(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -769,7 +780,7 @@ func TestSliceMd_ReferencesCollectingDecisionsFromAgents(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesDecisionsMdForAggregation(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -782,7 +793,7 @@ func TestSliceMd_ReferencesDecisionsMdForAggregation(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesDecisionSourceFormat(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -796,7 +807,7 @@ func TestSliceMd_ReferencesDecisionSourceFormat(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesDecisionAppendOnly(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -811,7 +822,7 @@ func TestSliceMd_ReferencesDecisionAppendOnly(t *testing.T) {
 }
 
 func TestSliceMd_DecisionAggregationIsNonBlocking(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -831,7 +842,7 @@ func TestSliceMd_DecisionAggregationIsNonBlocking(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesDecisionTableColumns(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -853,7 +864,7 @@ func TestSliceMd_ReferencesDecisionTableColumns(t *testing.T) {
 // These tests verify slice.md and wrap.md contain ROADMAP.md auto-update instructions
 
 func TestSliceMd_ReferencesRoadmapUpdate(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -866,7 +877,7 @@ func TestSliceMd_ReferencesRoadmapUpdate(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesSliceRowUpdate(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -884,7 +895,7 @@ func TestSliceMd_ReferencesSliceRowUpdate(t *testing.T) {
 }
 
 func TestSliceMd_ReferencesRoadmapCompletionFields(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -903,7 +914,7 @@ func TestSliceMd_ReferencesRoadmapCompletionFields(t *testing.T) {
 }
 
 func TestSliceMd_RoadmapUpdateIsBestEffort(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/slice.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/slice.md"))
 	if err != nil {
 		t.Fatalf("failed to read slice.md: %v", err)
 	}
@@ -924,7 +935,7 @@ func TestSliceMd_RoadmapUpdateIsBestEffort(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesRoadmapWrapProgress(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -938,7 +949,7 @@ func TestWrapMd_ReferencesRoadmapWrapProgress(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesWrapProgressSection(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -956,7 +967,7 @@ func TestWrapMd_ReferencesWrapProgressSection(t *testing.T) {
 }
 
 func TestWrapMd_ReferencesWrapBoundaryFields(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -975,7 +986,7 @@ func TestWrapMd_ReferencesWrapBoundaryFields(t *testing.T) {
 }
 
 func TestWrapMd_RoadmapWrapUpdateIsBestEffort(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/wrap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/wrap.md"))
 	if err != nil {
 		t.Fatalf("failed to read wrap.md: %v", err)
 	}
@@ -999,7 +1010,7 @@ func TestWrapMd_RoadmapWrapUpdateIsBestEffort(t *testing.T) {
 // These tests verify roadmap.md contains instructions for displaying ROADMAP.md
 
 func TestRoadmapMd_ContainsRoadmapMdReadReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1012,7 +1023,7 @@ func TestRoadmapMd_ContainsRoadmapMdReadReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsReadOnlyInstructions(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1030,7 +1041,7 @@ func TestRoadmapMd_ContainsReadOnlyInstructions(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsNoModifyInstructions(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1049,7 +1060,7 @@ func TestRoadmapMd_ContainsNoModifyInstructions(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsConfigJsonReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1062,7 +1073,7 @@ func TestRoadmapMd_ContainsConfigJsonReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsProjectContextReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1076,7 +1087,7 @@ func TestRoadmapMd_ContainsProjectContextReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsMissingRoadmapErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1093,7 +1104,7 @@ func TestRoadmapMd_ContainsMissingRoadmapErrorHandling(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsDesignPrerequisiteReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1106,7 +1117,7 @@ func TestRoadmapMd_ContainsDesignPrerequisiteReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsEmptyRoadmapErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1122,7 +1133,7 @@ func TestRoadmapMd_ContainsEmptyRoadmapErrorHandling(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsArchitectureDiagramReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1140,7 +1151,7 @@ func TestRoadmapMd_ContainsArchitectureDiagramReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsMilestoneTablesReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1157,7 +1168,7 @@ func TestRoadmapMd_ContainsMilestoneTablesReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsArchivedMilestonesReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1174,7 +1185,7 @@ func TestRoadmapMd_ContainsArchivedMilestonesReference(t *testing.T) {
 // These tests verify roadmap.md contains milestone planning sub-command instructions
 
 func TestRoadmapMd_ContainsMilestoneSubcommand(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1187,7 +1198,7 @@ func TestRoadmapMd_ContainsMilestoneSubcommand(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsGlDesignerSpawnReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1204,7 +1215,7 @@ func TestRoadmapMd_ContainsGlDesignerSpawnReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsGraphJsonReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1217,7 +1228,7 @@ func TestRoadmapMd_ContainsGraphJsonReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsDecisionsMdAppendReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1230,7 +1241,7 @@ func TestRoadmapMd_ContainsDecisionsMdAppendReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsLighterSessionReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1247,7 +1258,7 @@ func TestRoadmapMd_ContainsLighterSessionReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsMilestoneFieldReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1264,7 +1275,7 @@ func TestRoadmapMd_ContainsMilestoneFieldReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsDesignMdReadForMilestone(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1277,7 +1288,7 @@ func TestRoadmapMd_ContainsDesignMdReadForMilestone(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsContractsMdReadForMilestone(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1290,7 +1301,7 @@ func TestRoadmapMd_ContainsContractsMdReadForMilestone(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsStateMdReadForMilestone(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1303,7 +1314,7 @@ func TestRoadmapMd_ContainsStateMdReadForMilestone(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsMilestoneCommitMessage(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1319,7 +1330,7 @@ func TestRoadmapMd_ContainsMilestoneCommitMessage(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsMilestoneErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1341,7 +1352,7 @@ func TestRoadmapMd_ContainsMilestoneErrorHandling(t *testing.T) {
 // These tests verify roadmap.md contains archive sub-command instructions
 
 func TestRoadmapMd_ContainsArchiveSubcommand(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1354,7 +1365,7 @@ func TestRoadmapMd_ContainsArchiveSubcommand(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsArchivedMilestonesSectionReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1370,7 +1381,7 @@ func TestRoadmapMd_ContainsArchivedMilestonesSectionReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsCompletedMilestoneIdentification(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1387,7 +1398,7 @@ func TestRoadmapMd_ContainsCompletedMilestoneIdentification(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsCompressionFormatReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1404,7 +1415,7 @@ func TestRoadmapMd_ContainsCompressionFormatReference(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsArchiveCommitMessage(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1420,7 +1431,7 @@ func TestRoadmapMd_ContainsArchiveCommitMessage(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsArchiveErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1437,7 +1448,7 @@ func TestRoadmapMd_ContainsArchiveErrorHandling(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsUserSelectionForArchive(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -1459,7 +1470,7 @@ func TestRoadmapMd_ContainsUserSelectionForArchive(t *testing.T) {
 // These tests verify changelog.md contains instructions for displaying formatted changelog
 
 func TestChangelogMd_ContainsSummariesDirectoryReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1472,7 +1483,7 @@ func TestChangelogMd_ContainsSummariesDirectoryReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsReadOnlyInstructions(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1490,7 +1501,7 @@ func TestChangelogMd_ContainsReadOnlyInstructions(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsConfigJsonReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1503,7 +1514,7 @@ func TestChangelogMd_ContainsConfigJsonReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsChronologicalSortingReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1520,7 +1531,7 @@ func TestChangelogMd_ContainsChronologicalSortingReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsChangelogHeaderFormat(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1533,7 +1544,7 @@ func TestChangelogMd_ContainsChangelogHeaderFormat(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsEntryTypesReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1550,7 +1561,7 @@ func TestChangelogMd_ContainsEntryTypesReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsNoSummariesDirErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1566,7 +1577,7 @@ func TestChangelogMd_ContainsNoSummariesDirErrorHandling(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsEmptySummariesErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1582,7 +1593,7 @@ func TestChangelogMd_ContainsEmptySummariesErrorHandling(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsSummaryFileNamingReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1595,7 +1606,7 @@ func TestChangelogMd_ContainsSummaryFileNamingReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsParsingSummariesReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1612,7 +1623,7 @@ func TestChangelogMd_ContainsParsingSummariesReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsEntryCountSummaryReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1630,7 +1641,7 @@ func TestChangelogMd_ContainsEntryCountSummaryReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsNoConfigErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1646,7 +1657,7 @@ func TestChangelogMd_ContainsNoConfigErrorHandling(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsMalformedSummaryErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1662,7 +1673,7 @@ func TestChangelogMd_ContainsMalformedSummaryErrorHandling(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsEntryFormatReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1680,7 +1691,7 @@ func TestChangelogMd_ContainsEntryFormatReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsTestCountReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1697,7 +1708,7 @@ func TestChangelogMd_ContainsTestCountReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsOneLineSummaryReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1717,7 +1728,7 @@ func TestChangelogMd_ContainsOneLineSummaryReference(t *testing.T) {
 // These tests verify changelog.md contains milestone and since sub-command filtering instructions
 
 func TestChangelogMd_ContainsMilestoneSubcommand(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1730,7 +1741,7 @@ func TestChangelogMd_ContainsMilestoneSubcommand(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsSinceSubcommand(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1743,7 +1754,7 @@ func TestChangelogMd_ContainsSinceSubcommand(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsGraphJsonReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1756,7 +1767,7 @@ func TestChangelogMd_ContainsGraphJsonReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsDateFilteringReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1773,7 +1784,7 @@ func TestChangelogMd_ContainsDateFilteringReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsDateFormatReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1789,7 +1800,7 @@ func TestChangelogMd_ContainsDateFormatReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsUnknownMilestoneErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1805,7 +1816,7 @@ func TestChangelogMd_ContainsUnknownMilestoneErrorHandling(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsInvalidDateErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1821,7 +1832,7 @@ func TestChangelogMd_ContainsInvalidDateErrorHandling(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsMilestoneFilterReadOnly(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1838,7 +1849,7 @@ func TestChangelogMd_ContainsMilestoneFilterReadOnly(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsSinceFilterReadOnly(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1855,7 +1866,7 @@ func TestChangelogMd_ContainsSinceFilterReadOnly(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsMilestoneNameMatchingReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1872,7 +1883,7 @@ func TestChangelogMd_ContainsMilestoneNameMatchingReference(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsNoMatchingEntriesErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1888,7 +1899,7 @@ func TestChangelogMd_ContainsNoMatchingEntriesErrorHandling(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsMilestoneHeaderFormat(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1904,7 +1915,7 @@ func TestChangelogMd_ContainsMilestoneHeaderFormat(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsSinceHeaderFormat(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1920,7 +1931,7 @@ func TestChangelogMd_ContainsSinceHeaderFormat(t *testing.T) {
 }
 
 func TestChangelogMd_ContainsNoGraphJsonErrorHandling(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/changelog.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/changelog.md"))
 	if err != nil {
 		t.Fatalf("failed to read changelog.md: %v", err)
 	}
@@ -1939,7 +1950,7 @@ func TestChangelogMd_ContainsNoGraphJsonErrorHandling(t *testing.T) {
 // These tests verify design.md passes ASSESS.md, CONTRACTS.md, and STATE.md to the designer
 
 func TestDesignMd_ReferencesAssessMd(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -1952,7 +1963,7 @@ func TestDesignMd_ReferencesAssessMd(t *testing.T) {
 }
 
 func TestDesignMd_ReferencesContractsMdForBrownfieldContext(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -1966,7 +1977,7 @@ func TestDesignMd_ReferencesContractsMdForBrownfieldContext(t *testing.T) {
 }
 
 func TestDesignMd_ReferencesStateMd(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -1979,7 +1990,7 @@ func TestDesignMd_ReferencesStateMd(t *testing.T) {
 }
 
 func TestDesignMd_ContainsExistingAssessmentContextBlock(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -1992,7 +2003,7 @@ func TestDesignMd_ContainsExistingAssessmentContextBlock(t *testing.T) {
 }
 
 func TestDesignMd_ContainsExistingContractsContextBlock(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -2005,7 +2016,7 @@ func TestDesignMd_ContainsExistingContractsContextBlock(t *testing.T) {
 }
 
 func TestDesignMd_ContainsExistingStateContextBlock(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -2018,7 +2029,7 @@ func TestDesignMd_ContainsExistingStateContextBlock(t *testing.T) {
 }
 
 func TestDesignMd_BrownfieldReadsAreConditional(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/design.md"))
 	if err != nil {
 		t.Fatalf("failed to read design.md: %v", err)
 	}
@@ -2035,7 +2046,7 @@ func TestDesignMd_BrownfieldReadsAreConditional(t *testing.T) {
 // These tests verify roadmap.md passes ASSESS.md and wrap progress to milestone planning
 
 func TestRoadmapMd_MilestonePlanningReadsAssessMd(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -2048,7 +2059,7 @@ func TestRoadmapMd_MilestonePlanningReadsAssessMd(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsExistingAssessmentContextBlock(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -2061,7 +2072,7 @@ func TestRoadmapMd_ContainsExistingAssessmentContextBlock(t *testing.T) {
 }
 
 func TestRoadmapMd_ContainsWrapProgressReference(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -2077,7 +2088,7 @@ func TestRoadmapMd_ContainsWrapProgressReference(t *testing.T) {
 }
 
 func TestRoadmapMd_AssessMdReadIsConditional(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -2090,7 +2101,7 @@ func TestRoadmapMd_AssessMdReadIsConditional(t *testing.T) {
 }
 
 func TestRoadmapMd_AssessMdReadInGatherContextSection(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -2118,7 +2129,7 @@ func TestRoadmapMd_AssessMdReadInGatherContextSection(t *testing.T) {
 }
 
 func TestRoadmapMd_ExistingAssessmentInTaskSpawn(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -2142,7 +2153,7 @@ func TestRoadmapMd_ExistingAssessmentInTaskSpawn(t *testing.T) {
 }
 
 func TestRoadmapMd_WrapProgressInTaskSpawn(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/commands/gl/roadmap.md"))
 	if err != nil {
 		t.Fatalf("failed to read roadmap.md: %v", err)
 	}
@@ -2169,7 +2180,7 @@ func TestRoadmapMd_WrapProgressInTaskSpawn(t *testing.T) {
 // These tests verify gl-designer.md handles brownfield context blocks, risk tiers, [WRAPPED] tags, and milestone_planning mode
 
 func TestDesignerMd_ReferencesExistingAssessmentBlock(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/agents/gl-designer.md"))
 	if err != nil {
 		t.Fatalf("failed to read gl-designer.md: %v", err)
 	}
@@ -2182,7 +2193,7 @@ func TestDesignerMd_ReferencesExistingAssessmentBlock(t *testing.T) {
 }
 
 func TestDesignerMd_ReferencesWrappedTag(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/agents/gl-designer.md"))
 	if err != nil {
 		t.Fatalf("failed to read gl-designer.md: %v", err)
 	}
@@ -2195,7 +2206,7 @@ func TestDesignerMd_ReferencesWrappedTag(t *testing.T) {
 }
 
 func TestDesignerMd_ReferencesMilestonePlanningMode(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/agents/gl-designer.md"))
 	if err != nil {
 		t.Fatalf("failed to read gl-designer.md: %v", err)
 	}
@@ -2208,7 +2219,7 @@ func TestDesignerMd_ReferencesMilestonePlanningMode(t *testing.T) {
 }
 
 func TestDesignerMd_ReferencesRiskTiers(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/agents/gl-designer.md"))
 	if err != nil {
 		t.Fatalf("failed to read gl-designer.md: %v", err)
 	}
@@ -2225,7 +2236,7 @@ func TestDesignerMd_ReferencesRiskTiers(t *testing.T) {
 }
 
 func TestDesignerMd_ReferencesWrapProgress(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/agents/gl-designer.md"))
 	if err != nil {
 		t.Fatalf("failed to read gl-designer.md: %v", err)
 	}
@@ -2242,7 +2253,7 @@ func TestDesignerMd_ReferencesWrapProgress(t *testing.T) {
 }
 
 func TestDesignerMd_BrownfieldContextInContextProtocol(t *testing.T) {
-	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	content, err := os.ReadFile(filepath.Join(projectRoot(), "src/agents/gl-designer.md"))
 	if err != nil {
 		t.Fatalf("failed to read gl-designer.md: %v", err)
 	}
