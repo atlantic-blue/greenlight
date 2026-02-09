@@ -56,6 +56,9 @@ cat .greenlight/INTERVIEW.md 2>/dev/null
 If brownfield (existing codebase was mapped):
 ```bash
 ls .greenlight/codebase/ 2>/dev/null
+cat .greenlight/ASSESS.md 2>/dev/null
+cat .greenlight/CONTRACTS.md 2>/dev/null
+cat .greenlight/STATE.md 2>/dev/null
 ```
 
 Build the context block from what's available.
@@ -82,6 +85,18 @@ Read CLAUDE.md
 <existing_design>
 {if revising: contents of current DESIGN.md. Otherwise: 'No existing design'}
 </existing_design>
+
+<existing_assessment>
+{if ASSESS.md exists: contents. Otherwise: 'No assessment yet'}
+</existing_assessment>
+
+<existing_contracts>
+{if CONTRACTS.md exists: contents including [WRAPPED] tags. Otherwise: 'No contracts yet'}
+</existing_contracts>
+
+<existing_state>
+{if STATE.md exists: contents including wrap progress. Otherwise: 'No state yet'}
+</existing_state>
 
 Run the full design session:
 1. Deep dive on requirements (functional, non-functional, constraints, out of scope)

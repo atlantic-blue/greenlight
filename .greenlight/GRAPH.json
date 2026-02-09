@@ -210,6 +210,21 @@
         "User -> /gl:changelog command (display)",
         "/gl:changelog command -> Summary filtering (milestone, date)"
       ]
+    },
+    "S-17": {
+      "name": "Brownfield-Roadmap Integration",
+      "description": "Brownfield context flows into design and milestone planning. /gl:design passes ASSESS.md, CONTRACTS.md, and STATE.md to the designer. /gl:roadmap milestone passes ASSESS.md and wrap progress to milestone planning. gl-designer handles brownfield context blocks, risk tiers, [WRAPPED] tags, and milestone_planning session mode.",
+      "deliverables": ["src/commands/gl/design.md (update)", "src/commands/gl/roadmap.md (update)", "src/agents/gl-designer.md (update)"],
+      "contracts": ["C-51", "C-52", "C-53"],
+      "depends_on": ["S-12", "S-15"],
+      "user_action": "9. Brownfield context informs design and milestone planning (risk tiers, wrap progress, [WRAPPED] boundaries)",
+      "wave": 10,
+      "estimated_tests": 20,
+      "boundaries": [
+        "/gl:design orchestrator -> gl-designer (brownfield context blocks)",
+        "/gl:roadmap milestone -> gl-designer (assessment + wrap progress)",
+        "gl-designer agent -> Brownfield-aware design (risk tiers, [WRAPPED] tags)"
+      ]
     }
   },
 
@@ -267,6 +282,12 @@
       "slices": ["S-14", "S-15", "S-16"],
       "parallel": true,
       "scope": "documentation"
+    },
+    "10": {
+      "description": "Brownfield-roadmap integration: design and milestone planning receive brownfield context (ASSESS.md, wrap progress, risk tiers). Depends on S-12 (brownfield infrastructure) and S-15 (roadmap command).",
+      "slices": ["S-17"],
+      "parallel": false,
+      "scope": "documentation"
     }
   },
 
@@ -290,7 +311,9 @@
     { "from": "S-13", "to": "S-12", "reason": "Documentation infrastructure builds on brownfield infrastructure: manifest update is additive to C-33, help update is additive to C-28, status update is additive to C-27" },
     { "from": "S-14", "to": "S-13", "reason": "Auto-summaries update ROADMAP.md and DECISIONS.md which must be produceable by /gl:design (C-36, C-37)" },
     { "from": "S-15", "to": "S-13", "reason": "Roadmap command reads and modifies ROADMAP.md which must exist (created by C-36 via /gl:design update)" },
-    { "from": "S-16", "to": "S-13", "reason": "Changelog command reads summaries/ and needs roadmap.md and changelog.md in manifest (C-38)" }
+    { "from": "S-16", "to": "S-13", "reason": "Changelog command reads summaries/ and needs roadmap.md and changelog.md in manifest (C-38)" },
+    { "from": "S-17", "to": "S-12", "reason": "Brownfield-roadmap integration reads ASSESS.md and CONTRACTS.md which are produced by brownfield infrastructure (S-12)" },
+    { "from": "S-17", "to": "S-15", "reason": "Roadmap milestone planning context blocks extend the roadmap command established by S-15" }
   ],
 
   "import_graph": {
@@ -341,6 +364,11 @@
       "action": "User can see a human-readable changelog of everything that was built (/gl:changelog)",
       "slices": ["S-16", "S-13", "S-12"],
       "primary_slice": "S-16"
+    },
+    "9_brownfield_roadmap": {
+      "action": "Brownfield context informs design and milestone planning (risk tiers, wrap progress, [WRAPPED] boundaries)",
+      "slices": ["S-17", "S-15", "S-12"],
+      "primary_slice": "S-17"
     }
   }
 }

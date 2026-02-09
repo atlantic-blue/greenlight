@@ -1934,3 +1934,333 @@ func TestChangelogMd_ContainsNoGraphJsonErrorHandling(t *testing.T) {
 		t.Error("changelog.md missing NoGraphJson error handling")
 	}
 }
+
+// C-51 Tests: BrownfieldDesignContext
+// These tests verify design.md passes ASSESS.md, CONTRACTS.md, and STATE.md to the designer
+
+func TestDesignMd_ReferencesAssessMd(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	if err != nil {
+		t.Fatalf("failed to read design.md: %v", err)
+	}
+
+	designContent := string(content)
+
+	if !strings.Contains(designContent, "ASSESS.md") {
+		t.Error("design.md missing ASSESS.md reference")
+	}
+}
+
+func TestDesignMd_ReferencesContractsMdForBrownfieldContext(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	if err != nil {
+		t.Fatalf("failed to read design.md: %v", err)
+	}
+
+	designContent := string(content)
+
+	// CONTRACTS.md should be referenced for brownfield context (not just for contracts in general)
+	if !strings.Contains(designContent, "CONTRACTS.md") {
+		t.Error("design.md missing CONTRACTS.md reference for brownfield context")
+	}
+}
+
+func TestDesignMd_ReferencesStateMd(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	if err != nil {
+		t.Fatalf("failed to read design.md: %v", err)
+	}
+
+	designContent := string(content)
+
+	if !strings.Contains(designContent, "STATE.md") {
+		t.Error("design.md missing STATE.md reference")
+	}
+}
+
+func TestDesignMd_ContainsExistingAssessmentContextBlock(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	if err != nil {
+		t.Fatalf("failed to read design.md: %v", err)
+	}
+
+	designContent := string(content)
+
+	if !strings.Contains(designContent, "existing_assessment") {
+		t.Error("design.md missing existing_assessment context block")
+	}
+}
+
+func TestDesignMd_ContainsExistingContractsContextBlock(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	if err != nil {
+		t.Fatalf("failed to read design.md: %v", err)
+	}
+
+	designContent := string(content)
+
+	if !strings.Contains(designContent, "existing_contracts") {
+		t.Error("design.md missing existing_contracts context block")
+	}
+}
+
+func TestDesignMd_ContainsExistingStateContextBlock(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	if err != nil {
+		t.Fatalf("failed to read design.md: %v", err)
+	}
+
+	designContent := string(content)
+
+	if !strings.Contains(designContent, "existing_state") {
+		t.Error("design.md missing existing_state context block")
+	}
+}
+
+func TestDesignMd_BrownfieldReadsAreConditional(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/design.md")
+	if err != nil {
+		t.Fatalf("failed to read design.md: %v", err)
+	}
+
+	designContent := string(content)
+
+	// Brownfield reads should use 2>/dev/null pattern for conditional reads
+	if !strings.Contains(designContent, "ASSESS.md 2>/dev/null") {
+		t.Error("design.md missing conditional read pattern (2>/dev/null) for ASSESS.md")
+	}
+}
+
+// C-52 Tests: BrownfieldRoadmapContext
+// These tests verify roadmap.md passes ASSESS.md and wrap progress to milestone planning
+
+func TestRoadmapMd_MilestonePlanningReadsAssessMd(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	if err != nil {
+		t.Fatalf("failed to read roadmap.md: %v", err)
+	}
+
+	roadmapContent := string(content)
+
+	if !strings.Contains(roadmapContent, "ASSESS.md") {
+		t.Error("roadmap.md missing ASSESS.md reference for milestone planning")
+	}
+}
+
+func TestRoadmapMd_ContainsExistingAssessmentContextBlock(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	if err != nil {
+		t.Fatalf("failed to read roadmap.md: %v", err)
+	}
+
+	roadmapContent := string(content)
+
+	if !strings.Contains(roadmapContent, "existing_assessment") {
+		t.Error("roadmap.md missing existing_assessment context block")
+	}
+}
+
+func TestRoadmapMd_ContainsWrapProgressReference(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	if err != nil {
+		t.Fatalf("failed to read roadmap.md: %v", err)
+	}
+
+	roadmapContent := string(content)
+
+	hasWrapProgress := strings.Contains(roadmapContent, "wrap_progress") ||
+		strings.Contains(roadmapContent, "Wrapped Boundaries")
+
+	if !hasWrapProgress {
+		t.Error("roadmap.md missing wrap_progress or Wrapped Boundaries reference")
+	}
+}
+
+func TestRoadmapMd_AssessMdReadIsConditional(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	if err != nil {
+		t.Fatalf("failed to read roadmap.md: %v", err)
+	}
+
+	roadmapContent := string(content)
+
+	if !strings.Contains(roadmapContent, "ASSESS.md 2>/dev/null") {
+		t.Error("roadmap.md missing conditional read pattern (2>/dev/null) for ASSESS.md")
+	}
+}
+
+func TestRoadmapMd_AssessMdReadInGatherContextSection(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	if err != nil {
+		t.Fatalf("failed to read roadmap.md: %v", err)
+	}
+
+	roadmapContent := string(content)
+
+	// ASSESS.md read should appear in the Gather Context section
+	gatherPos := strings.Index(roadmapContent, "Gather Context")
+	assessPos := strings.Index(roadmapContent, "ASSESS.md 2>/dev/null")
+	spawnPos := strings.Index(roadmapContent, "Spawn gl-designer")
+
+	if gatherPos == -1 {
+		t.Fatal("roadmap.md missing Gather Context section")
+	}
+	if assessPos == -1 {
+		t.Fatal("roadmap.md missing ASSESS.md 2>/dev/null read")
+	}
+	if spawnPos == -1 {
+		t.Fatal("roadmap.md missing Spawn gl-designer section")
+	}
+
+	if assessPos <= gatherPos || assessPos >= spawnPos {
+		t.Errorf("ASSESS.md read (pos %d) should be between Gather Context (pos %d) and Spawn gl-designer (pos %d)", assessPos, gatherPos, spawnPos)
+	}
+}
+
+func TestRoadmapMd_ExistingAssessmentInTaskSpawn(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	if err != nil {
+		t.Fatalf("failed to read roadmap.md: %v", err)
+	}
+
+	roadmapContent := string(content)
+
+	// existing_assessment should appear within the Task spawn block (after Task(prompt=)
+	spawnPos := strings.Index(roadmapContent, "Spawn gl-designer")
+	assessmentBlockPos := strings.Index(roadmapContent, "existing_assessment")
+
+	if spawnPos == -1 {
+		t.Fatal("roadmap.md missing Spawn gl-designer section")
+	}
+	if assessmentBlockPos == -1 {
+		t.Fatal("roadmap.md missing existing_assessment block")
+	}
+
+	if assessmentBlockPos <= spawnPos {
+		t.Errorf("existing_assessment block (pos %d) should appear after Spawn gl-designer section (pos %d)", assessmentBlockPos, spawnPos)
+	}
+}
+
+func TestRoadmapMd_WrapProgressInTaskSpawn(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/commands/gl/roadmap.md")
+	if err != nil {
+		t.Fatalf("failed to read roadmap.md: %v", err)
+	}
+
+	roadmapContent := string(content)
+
+	// wrap_progress should appear within the Task spawn block
+	spawnPos := strings.Index(roadmapContent, "Spawn gl-designer")
+	wrapProgressPos := strings.Index(roadmapContent, "wrap_progress")
+
+	if spawnPos == -1 {
+		t.Fatal("roadmap.md missing Spawn gl-designer section")
+	}
+	if wrapProgressPos == -1 {
+		t.Fatal("roadmap.md missing wrap_progress block")
+	}
+
+	if wrapProgressPos <= spawnPos {
+		t.Errorf("wrap_progress block (pos %d) should appear after Spawn gl-designer section (pos %d)", wrapProgressPos, spawnPos)
+	}
+}
+
+// C-53 Tests: DesignerBrownfieldAwareness
+// These tests verify gl-designer.md handles brownfield context blocks, risk tiers, [WRAPPED] tags, and milestone_planning mode
+
+func TestDesignerMd_ReferencesExistingAssessmentBlock(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	if err != nil {
+		t.Fatalf("failed to read gl-designer.md: %v", err)
+	}
+
+	designerContent := string(content)
+
+	if !strings.Contains(designerContent, "existing_assessment") {
+		t.Error("gl-designer.md missing existing_assessment block reference")
+	}
+}
+
+func TestDesignerMd_ReferencesWrappedTag(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	if err != nil {
+		t.Fatalf("failed to read gl-designer.md: %v", err)
+	}
+
+	designerContent := string(content)
+
+	if !strings.Contains(designerContent, "[WRAPPED]") {
+		t.Error("gl-designer.md missing [WRAPPED] tag reference")
+	}
+}
+
+func TestDesignerMd_ReferencesMilestonePlanningMode(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	if err != nil {
+		t.Fatalf("failed to read gl-designer.md: %v", err)
+	}
+
+	designerContent := string(content)
+
+	if !strings.Contains(designerContent, "milestone_planning") {
+		t.Error("gl-designer.md missing milestone_planning session mode reference")
+	}
+}
+
+func TestDesignerMd_ReferencesRiskTiers(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	if err != nil {
+		t.Fatalf("failed to read gl-designer.md: %v", err)
+	}
+
+	designerContent := string(content)
+	lowerContent := strings.ToLower(designerContent)
+
+	hasRisk := strings.Contains(lowerContent, "risk")
+	hasTier := strings.Contains(lowerContent, "critical") || strings.Contains(lowerContent, "tier")
+
+	if !hasRisk || !hasTier {
+		t.Error("gl-designer.md missing risk tier references (risk + critical/tier)")
+	}
+}
+
+func TestDesignerMd_ReferencesWrapProgress(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	if err != nil {
+		t.Fatalf("failed to read gl-designer.md: %v", err)
+	}
+
+	designerContent := string(content)
+	lowerContent := strings.ToLower(designerContent)
+
+	hasWrapProgress := strings.Contains(lowerContent, "wrap progress") ||
+		strings.Contains(lowerContent, "wrapped boundaries")
+
+	if !hasWrapProgress {
+		t.Error("gl-designer.md missing wrap progress or wrapped boundaries reference")
+	}
+}
+
+func TestDesignerMd_BrownfieldContextInContextProtocol(t *testing.T) {
+	content, err := os.ReadFile("/Users/juliantellez/github.com/atlantic-blue/greenlight/src/agents/gl-designer.md")
+	if err != nil {
+		t.Fatalf("failed to read gl-designer.md: %v", err)
+	}
+
+	designerContent := string(content)
+
+	// existing_assessment should appear within or after context_protocol section
+	contextProtocolPos := strings.Index(designerContent, "context_protocol")
+	assessmentPos := strings.Index(designerContent, "existing_assessment")
+
+	if contextProtocolPos == -1 {
+		t.Fatal("gl-designer.md missing context_protocol section")
+	}
+	if assessmentPos == -1 {
+		t.Fatal("gl-designer.md missing existing_assessment block")
+	}
+
+	if assessmentPos <= contextProtocolPos {
+		t.Errorf("existing_assessment (pos %d) should appear after context_protocol start (pos %d)", assessmentPos, contextProtocolPos)
+	}
+}

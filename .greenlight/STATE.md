@@ -25,17 +25,18 @@ Mode: yolo
 | S-14 | Auto-Summaries and Decision Aggregation | complete | 38 | 0 | S-13 |
 | S-15 | Roadmap Command | complete | 29 | 0 | S-13 |
 | S-16 | Changelog Command | complete | 30 | 0 | S-13 |
+| S-17 | Brownfield-Roadmap Integration | complete | 20 | 0 | S-12, S-15 |
 
-Progress: [████████████████] 16/16 slices
+Progress: [█████████████████] 17/17 slices
 
 ## Current
 
 Building documentation features.
-Last activity: 2026-02-09 — S-16 complete (changelog display, milestone filter, date filter). ALL SLICES COMPLETE.
+Last activity: 2026-02-09 — S-17 complete (brownfield-roadmap integration). ALL SLICES COMPLETE.
 
 ## Test Summary
 
-Total: 395 passing, 0 failing, 0 security
+Total: 415 passing, 0 failing, 0 security
 Last run: 2026-02-09
 
 ## Decisions

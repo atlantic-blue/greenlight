@@ -1702,6 +1702,9 @@ Invariants:
 | C-48 | RoadmapMilestoneArchive | User -> /gl:roadmap archive -> Filesystem (ROADMAP.md) | S-15 |
 | C-49 | ChangelogDisplay | User -> /gl:changelog command (display) | S-16 |
 | C-50 | ChangelogFiltering | /gl:changelog command -> Summary filtering (milestone, date) | S-16 |
+| C-51 | BrownfieldDesignContext | /gl:design orchestrator -> gl-designer (brownfield context blocks) | S-17 |
+| C-52 | BrownfieldRoadmapContext | /gl:roadmap milestone -> gl-designer (assessment + wrap progress) | S-17 |
+| C-53 | DesignerBrownfieldAwareness | gl-designer agent -> Brownfield-aware design (risk tiers, [WRAPPED] tags) | S-17 |
 
 ---
 
@@ -2622,6 +2625,71 @@ Invariants:
 
 ---
 
+## S-17: Brownfield-Roadmap Integration
+
+### C-51: BrownfieldDesignContext
+
+```
+Contract: BrownfieldDesignContext
+Boundary: /gl:design orchestrator -> gl-designer (brownfield context blocks)
+Slice: S-17
+
+design.md passes brownfield context to the designer agent:
+  - Reads ASSESS.md (conditional, 2>/dev/null)
+  - Reads CONTRACTS.md (conditional, for [WRAPPED] tags)
+  - Reads STATE.md (conditional, for wrap progress)
+  - Passes <existing_assessment> context block
+  - Passes <existing_contracts> context block
+  - Passes <existing_state> context block
+
+Invariants:
+  - All reads are conditional (2>/dev/null) -- greenfield projects work without them
+  - Context blocks default to 'No assessment yet' / 'No contracts yet' / 'No state yet'
+  - Existing design.md functionality unchanged for greenfield projects
+```
+
+### C-52: BrownfieldRoadmapContext
+
+```
+Contract: BrownfieldRoadmapContext
+Boundary: /gl:roadmap milestone -> gl-designer (assessment + wrap progress)
+Slice: S-17
+
+roadmap.md milestone planning passes brownfield context to designer:
+  - Reads ASSESS.md in Gather Context section (conditional, 2>/dev/null)
+  - Passes <existing_assessment> in Task spawn block
+  - Passes <wrap_progress> in Task spawn block (from STATE.md Wrapped Boundaries)
+
+Invariants:
+  - ASSESS.md read is conditional -- projects without assessments work fine
+  - <existing_assessment> appears after Spawn gl-designer heading
+  - <wrap_progress> appears after Spawn gl-designer heading
+  - Existing milestone planning functionality unchanged for non-brownfield projects
+```
+
+### C-53: DesignerBrownfieldAwareness
+
+```
+Contract: DesignerBrownfieldAwareness
+Boundary: gl-designer agent -> Brownfield-aware design (risk tiers, [WRAPPED] tags)
+Slice: S-17
+
+gl-designer.md handles brownfield context:
+  - Documents <existing_assessment>, <existing_contracts>, <existing_state> in context_protocol
+  - References [WRAPPED] tag for boundaries with locking tests
+  - Supports milestone_planning session mode (skip init phases, focus on milestone scope)
+  - References risk tiers (Critical/High/Medium) for slice prioritization
+  - References wrap progress / wrapped boundaries for milestone ordering
+  - Output checklist includes brownfield-specific items
+
+Invariants:
+  - Brownfield context is in context_protocol section (ordering)
+  - All brownfield handling is conditional -- greenfield projects unaffected
+  - milestone_planning mode skips Phase 1-2 and Phase 4
+```
+
+---
+
 ## Updated User Action Mapping
 
 | User Action | Slice(s) | Contracts | Enabled By |
@@ -2634,3 +2702,4 @@ Invariants:
 | 6. User can see what was built and why after each slice, wrap, or quick task | S-14 | C-41, C-42, C-43, C-44, C-45 | Auto-summaries + decision aggregation |
 | 7. User can view product roadmap and plan new milestones | S-15 | C-46, C-47, C-48 | /gl:roadmap command |
 | 8. User can see a human-readable changelog of everything that was built | S-16 | C-49, C-50 | /gl:changelog command |
+| 9. Brownfield context informs design and milestone planning | S-17 | C-51, C-52, C-53 | /gl:design + /gl:roadmap milestone + gl-designer updates |

@@ -138,6 +138,7 @@ cat .greenlight/DESIGN.md
 cat .greenlight/CONTRACTS.md
 cat .greenlight/STATE.md
 cat .greenlight/GRAPH.json 2>/dev/null
+cat .greenlight/ASSESS.md 2>/dev/null
 ```
 
 Build the context block from what's available.
@@ -170,6 +171,14 @@ milestone_planning
 <existing_graph>
 {contents of GRAPH.json if exists, otherwise 'No graph yet'}
 </existing_graph>
+
+<existing_assessment>
+{contents of ASSESS.md if exists, otherwise 'No assessment available'}
+</existing_assessment>
+
+<wrap_progress>
+{Extract "Wrapped Boundaries" section from STATE.md if present. Otherwise: 'No wrapped boundaries yet'}
+</wrap_progress>
 
 <project_context>
 {project name, stack, architecture from config.json}
