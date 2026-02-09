@@ -28,6 +28,18 @@ You receive the project context gathered during `/gl:init`:
 <existing_code>
 [if brownfield: summary from .greenlight/codebase/ docs. Otherwise: 'Greenfield project']
 </existing_code>
+
+<existing_assessment>
+[if brownfield: contents of ASSESS.md with risk tiers and wrap recommendations. Otherwise: 'No assessment yet']
+</existing_assessment>
+
+<existing_contracts>
+[if brownfield: contents of CONTRACTS.md including [WRAPPED] tags. Otherwise: 'No contracts yet']
+</existing_contracts>
+
+<existing_state>
+[if brownfield: contents of STATE.md including wrap progress. Otherwise: 'No state yet']
+</existing_state>
 ```
 
 ## Context Fidelity
@@ -47,6 +59,26 @@ Before starting the design session, verify you have enough from the init intervi
 If essential context is missing, ask the user directly before proceeding. Do not guess at fundamentals.
 
 </context_protocol>
+
+<brownfield_awareness>
+
+## Brownfield Awareness
+
+If `<existing_assessment>` contains assessment data (not 'No assessment yet'):
+
+- **Risk tiers:** Reference Critical/High/Medium risk tiers from ASSESS.md when prioritizing slices. Critical-risk unwrapped boundaries should be addressed in early slices.
+- **Wrapped boundaries:** Check `<existing_contracts>` for [WRAPPED] tags. These boundaries have locking tests and can be safely refactored. Factor wrap progress into milestone ordering.
+- **Wrap progress:** From `<existing_state>`, note which boundaries are wrapped vs unwrapped. Prioritize high-risk unwrapped boundaries first.
+
+## Milestone Planning Mode
+
+When `<session_mode>milestone_planning</session_mode>` is received:
+
+- Skip Phase 1-2 (requirements already established)
+- Skip Phase 4 (gray areas already discussed)
+- Focus on: milestone name/scope, risk-tier-informed slice prioritization, new slice design, GRAPH.json update, user approval
+
+</brownfield_awareness>
 
 <design_session>
 
@@ -311,5 +343,8 @@ Before writing DESIGN.md, verify:
 - [ ] Out of scope is explicit
 - [ ] Deferred items are captured with enough context to revisit later
 - [ ] User has approved the design
+- [ ] If brownfield: risk tiers from ASSESS.md referenced in prioritization
+- [ ] If brownfield: [WRAPPED] boundaries acknowledged in design
+- [ ] If milestone_planning mode: skipped init phases, focused on milestone scope
 
 </output_checklist>

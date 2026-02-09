@@ -1,7 +1,7 @@
 {
   "project": "greenlight",
-  "description": "Dependency graph for Greenlight CLI stabilisation and brownfield MVP. Defines build order by slice with explicit dependencies and parallelism.",
-  "date": "2026-02-08",
+  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, and documentation system. Defines build order by slice with explicit dependencies and parallelism.",
+  "date": "2026-02-09",
 
   "slices": {
     "S-01": {
@@ -146,6 +146,85 @@
         "config.json template -> Profile (assessor, wrapper entries)",
         "CLAUDE.md -> Agent Isolation Rules (new rows)"
       ]
+    },
+
+    "S-13": {
+      "name": "Documentation Infrastructure and Design Update",
+      "description": "Foundation for all documentation features. Updates /gl:design to produce ROADMAP.md (with initial milestone, Mermaid architecture diagram, slice table) and DECISIONS.md (seeded from design decisions). Adds 2 new file paths to Go CLI Manifest (roadmap.md, changelog.md). Updates /gl:help with INSIGHT section and three-views tagline. Updates /gl:status with roadmap/changelog reference line.",
+      "deliverables": ["src/commands/gl/design.md (update)", "internal/installer/installer.go (manifest update +2)", "src/commands/gl/help.md (update)", "src/commands/gl/status.md (update)"],
+      "contracts": ["C-36", "C-37", "C-38", "C-39", "C-40"],
+      "depends_on": ["S-12"],
+      "user_action": "5. User can start a project with a product roadmap and decision log from day one (/gl:design produces ROADMAP.md + DECISIONS.md)",
+      "wave": 8,
+      "estimated_tests": 10,
+      "boundaries": [
+        "/gl:design orchestrator -> Filesystem (ROADMAP.md)",
+        "/gl:design orchestrator -> Filesystem (DECISIONS.md)",
+        "Go CLI -> Manifest (2 new file paths)",
+        "/gl:help command -> User (INSIGHT section)",
+        "/gl:status command -> User (roadmap/changelog reference)"
+      ]
+    },
+    "S-14": {
+      "name": "Auto-Summaries and Decision Aggregation",
+      "description": "Automated documentation generation after every slice, wrap, and quick task. Updates /gl:slice to spawn a summary Task after verification, aggregate agent decisions into DECISIONS.md, update ROADMAP.md slice status, and check for architecture changes. Updates /gl:wrap to spawn a wrap summary Task and update ROADMAP.md wrap progress. Updates /gl:quick to generate quick summaries and append decisions.",
+      "deliverables": ["src/commands/gl/slice.md (update)", "src/commands/gl/wrap.md (update)", "src/commands/gl/quick.md (update)"],
+      "contracts": ["C-41", "C-42", "C-43", "C-44", "C-45"],
+      "depends_on": ["S-13"],
+      "user_action": "6. User can see what was built and why after each slice, wrap, or quick task (auto-generated summaries + decisions)",
+      "wave": 9,
+      "estimated_tests": 12,
+      "boundaries": [
+        "/gl:slice orchestrator -> Summary Task -> Filesystem (summaries/)",
+        "/gl:wrap orchestrator -> Summary Task -> Filesystem (summaries/)",
+        "/gl:quick orchestrator -> Summary Task -> Filesystem (summaries/)",
+        "/gl:slice orchestrator -> Filesystem (DECISIONS.md)",
+        "Orchestrators (slice/wrap) -> Filesystem (ROADMAP.md)"
+      ]
+    },
+    "S-15": {
+      "name": "Roadmap Command",
+      "description": "User can view the product roadmap, plan new milestones, and archive completed ones. /gl:roadmap displays ROADMAP.md (read-only). /gl:roadmap milestone spawns gl-designer with milestone scope to plan new slices, appends to GRAPH.json and ROADMAP.md, and logs decisions. /gl:roadmap archive compresses completed milestones.",
+      "deliverables": ["src/commands/gl/roadmap.md"],
+      "contracts": ["C-46", "C-47", "C-48"],
+      "depends_on": ["S-13"],
+      "user_action": "7. User can view product roadmap and plan new milestones (/gl:roadmap)",
+      "wave": 9,
+      "estimated_tests": 8,
+      "boundaries": [
+        "User -> /gl:roadmap command (display)",
+        "User -> /gl:roadmap milestone -> gl-designer (scoped design session)",
+        "User -> /gl:roadmap archive -> Filesystem (ROADMAP.md)"
+      ]
+    },
+    "S-16": {
+      "name": "Changelog Command",
+      "description": "User can see a human-readable changelog of everything that was built. /gl:changelog reads all summary files from .greenlight/summaries/, formats them chronologically, and displays to the user. Supports filtering by milestone name or date. Read-only, no files written.",
+      "deliverables": ["src/commands/gl/changelog.md"],
+      "contracts": ["C-49", "C-50"],
+      "depends_on": ["S-13"],
+      "user_action": "8. User can see a human-readable changelog of everything that was built (/gl:changelog)",
+      "wave": 9,
+      "estimated_tests": 6,
+      "boundaries": [
+        "User -> /gl:changelog command (display)",
+        "/gl:changelog command -> Summary filtering (milestone, date)"
+      ]
+    },
+    "S-17": {
+      "name": "Brownfield-Roadmap Integration",
+      "description": "Brownfield context flows into design and milestone planning. /gl:design passes ASSESS.md, CONTRACTS.md, and STATE.md to the designer. /gl:roadmap milestone passes ASSESS.md and wrap progress to milestone planning. gl-designer handles brownfield context blocks, risk tiers, [WRAPPED] tags, and milestone_planning session mode.",
+      "deliverables": ["src/commands/gl/design.md (update)", "src/commands/gl/roadmap.md (update)", "src/agents/gl-designer.md (update)"],
+      "contracts": ["C-51", "C-52", "C-53"],
+      "depends_on": ["S-12", "S-15"],
+      "user_action": "9. Brownfield context informs design and milestone planning (risk tiers, wrap progress, [WRAPPED] boundaries)",
+      "wave": 10,
+      "estimated_tests": 20,
+      "boundaries": [
+        "/gl:design orchestrator -> gl-designer (brownfield context blocks)",
+        "/gl:roadmap milestone -> gl-designer (assessment + wrap progress)",
+        "gl-designer agent -> Brownfield-aware design (risk tiers, [WRAPPED] tags)"
+      ]
     }
   },
 
@@ -191,6 +270,24 @@
       "slices": ["S-11"],
       "parallel": false,
       "scope": "brownfield"
+    },
+    "8": {
+      "description": "Documentation infrastructure: /gl:design update (produce ROADMAP.md and DECISIONS.md), manifest +2 (roadmap.md, changelog.md), help INSIGHT section, status reference line. Foundation for all documentation features. Depends on S-12 (brownfield infrastructure must be in place for combined manifest update).",
+      "slices": ["S-13"],
+      "parallel": false,
+      "scope": "documentation"
+    },
+    "9": {
+      "description": "Documentation features: auto-summaries, roadmap command, and changelog command. All depend only on S-13 and can be built in parallel.",
+      "slices": ["S-14", "S-15", "S-16"],
+      "parallel": true,
+      "scope": "documentation"
+    },
+    "10": {
+      "description": "Brownfield-roadmap integration: design and milestone planning receive brownfield context (ASSESS.md, wrap progress, risk tiers). Depends on S-12 (brownfield infrastructure) and S-15 (roadmap command).",
+      "slices": ["S-17"],
+      "parallel": false,
+      "scope": "documentation"
     }
   },
 
@@ -210,7 +307,13 @@
     { "from": "S-09", "to": "S-12", "reason": "Wrap needs gl-wrapper.md in manifest and wrapper agent model in config profiles" },
     { "from": "S-10", "to": "S-12", "reason": "Command updates reference assessor/wrapper agents that must be in config profiles" },
     { "from": "S-11", "to": "S-09", "reason": "Locking-to-integration transition requires wrapped boundaries to exist (locking tests, [WRAPPED] contracts)" },
-    { "from": "S-11", "to": "S-12", "reason": "Slice updates reference [WRAPPED] contracts and locking tests infrastructure" }
+    { "from": "S-11", "to": "S-12", "reason": "Slice updates reference [WRAPPED] contracts and locking tests infrastructure" },
+    { "from": "S-13", "to": "S-12", "reason": "Documentation infrastructure builds on brownfield infrastructure: manifest update is additive to C-33, help update is additive to C-28, status update is additive to C-27" },
+    { "from": "S-14", "to": "S-13", "reason": "Auto-summaries update ROADMAP.md and DECISIONS.md which must be produceable by /gl:design (C-36, C-37)" },
+    { "from": "S-15", "to": "S-13", "reason": "Roadmap command reads and modifies ROADMAP.md which must exist (created by C-36 via /gl:design update)" },
+    { "from": "S-16", "to": "S-13", "reason": "Changelog command reads summaries/ and needs roadmap.md and changelog.md in manifest (C-38)" },
+    { "from": "S-17", "to": "S-12", "reason": "Brownfield-roadmap integration reads ASSESS.md and CONTRACTS.md which are produced by brownfield infrastructure (S-12)" },
+    { "from": "S-17", "to": "S-15", "reason": "Roadmap milestone planning context blocks extend the roadmap command established by S-15" }
   ],
 
   "import_graph": {
@@ -241,6 +344,31 @@
       "action": "User can refactor a wrapped boundary through the normal TDD loop (/gl:slice with wraps field)",
       "slices": ["S-11", "S-09", "S-12"],
       "primary_slice": "S-11"
+    },
+    "5_roadmap_init": {
+      "action": "User can start a project with a product roadmap and decision log from day one (/gl:design produces ROADMAP.md + DECISIONS.md)",
+      "slices": ["S-13", "S-12"],
+      "primary_slice": "S-13"
+    },
+    "6_auto_summaries": {
+      "action": "User can see what was built and why after each slice, wrap, or quick task (auto-generated summaries + decisions)",
+      "slices": ["S-14", "S-13", "S-12"],
+      "primary_slice": "S-14"
+    },
+    "7_roadmap_milestones": {
+      "action": "User can view product roadmap and plan new milestones (/gl:roadmap)",
+      "slices": ["S-15", "S-13", "S-12"],
+      "primary_slice": "S-15"
+    },
+    "8_changelog": {
+      "action": "User can see a human-readable changelog of everything that was built (/gl:changelog)",
+      "slices": ["S-16", "S-13", "S-12"],
+      "primary_slice": "S-16"
+    },
+    "9_brownfield_roadmap": {
+      "action": "Brownfield context informs design and milestone planning (risk tiers, wrap progress, [WRAPPED] boundaries)",
+      "slices": ["S-17", "S-15", "S-12"],
+      "primary_slice": "S-17"
     }
   }
 }

@@ -24,7 +24,7 @@ allowed-tools: [Read, Bash, Glob]
 │                                                              │
 │  BUILD                                                       │
 │  /gl:slice <N>         TDD loop: test → implement →          │
-│                        security → verify → commit            │
+│                        security → verify → commit → summary  │
 │  /gl:quick             Ad-hoc task with test guarantees      │
 │  /gl:add-slice         Add new slice to graph                │
 │                                                              │
@@ -33,12 +33,20 @@ allowed-tools: [Read, Bash, Glob]
 │  /gl:pause             Save state for next session           │
 │  /gl:resume            Restore and continue                  │
 │                                                              │
+│  INSIGHT                                                     │
+│  /gl:roadmap           Product roadmap + milestones          │
+│  /gl:changelog         Human-readable changelog from summaries│
+│                                                              │
 │  SHIP                                                        │
 │  /gl:ship              Full audit + deploy readiness         │
 │                                                              │
 │  FLOW                                                        │
-│  map? → assess? → init → design → wrap? → slice 1 → ... →   │
-│  ship                                                        │
+│  map? → assess? → init → design (ROADMAP, DECISIONS) →       │
+│  wrap? → slice 1 (summary) → ... → ship →                    │
+│  roadmap milestone → ...                                     │
+│                                                              │
+│  Three views: /gl:status (machine), /gl:roadmap (product),   │
+│  /gl:changelog (history)                                     │
 │                                                              │
 │  Tests are the source of truth. Green means done.            │
 │  Security is built in, not bolted on.                        │

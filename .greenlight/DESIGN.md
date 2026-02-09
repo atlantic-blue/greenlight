@@ -1,9 +1,9 @@
-# DESIGN.md -- Greenlight Brownfield Support
+# DESIGN.md -- Greenlight Brownfield Support + Roadmap & Documentation
 
 > **Project:** Greenlight
-> **Scope:** Add brownfield support: `/gl:assess` (gap analysis) and `/gl:wrap` (locking tests + contract extraction). Update existing commands for brownfield awareness.
+> **Scope:** Add brownfield support (`/gl:assess`, `/gl:wrap`) and human-facing documentation system (`/gl:roadmap`, `/gl:changelog`, auto-summaries, decision log, living architecture diagram). Update existing commands for brownfield awareness and documentation integration.
 > **Stack:** Go 1.24, stdlib only. But the deliverables are markdown prompt files, not Go code.
-> **Date:** 2026-02-08
+> **Date:** 2026-02-09
 > **Replaces:** Previous DESIGN.md (CLI stabilisation -- complete, 228 tests passing)
 
 ---
@@ -153,13 +153,15 @@
 | FR-13.4 | MUST update `.greenlight/STATE.md` Wrapped Boundaries section with the new boundary |
 | FR-13.5 | MUST update `.greenlight/CONTRACTS.md` with wrapped contracts |
 
-#### FR-14: Next Action
+#### FR-14: Wrap Summary and Next Action
 
 | ID | Requirement |
 |----|-------------|
 | FR-14.1 | MUST guide user to either wrap another boundary or start building new features via `/gl:slice` |
 | FR-14.2 | MUST show wrap progress: `{N} of {M} boundaries wrapped` (where M comes from ASSESS.md priority list, or is omitted if no ASSESS.md) |
 | FR-14.3 | IF all Critical-tier boundaries are wrapped, MUST suggest moving to `/gl:design` or `/gl:slice` for new features |
+| FR-14.4 | MUST generate a wrap summary in `.greenlight/summaries/{boundary-name}-wrap-SUMMARY.md` (see FR-26) |
+| FR-14.5 | MUST update ROADMAP.md wrap progress if ROADMAP.md exists |
 
 ### 1.3 Functional Requirements -- Updates to Existing Commands
 
@@ -173,6 +175,10 @@
 | FR-15.4 | After new integration tests pass and verification succeeds, locking tests for the wrapped boundary MUST be deleted |
 | FR-15.5 | After locking tests are deleted, the `[WRAPPED]` tag MUST be removed from corresponding contracts in CONTRACTS.md |
 | FR-15.6 | STATE.md Wrapped Boundaries status MUST update to `refactored` when locking tests are replaced |
+| FR-15.7 | After slice verification succeeds, MUST spawn a Task to generate a slice summary in `.greenlight/summaries/{slice-id}-SUMMARY.md` (see FR-25) |
+| FR-15.8 | After summary generation, MUST update ROADMAP.md: slice status, completion date, test count, decisions made during slice |
+| FR-15.9 | After summary generation, MUST append any implementation decisions to `.greenlight/DECISIONS.md` (see FR-28) |
+| FR-15.10 | After slice completes, MUST check if architecture changed (new service, integration, database table, endpoint group) and update the Architecture Diagram section in ROADMAP.md if so |
 
 #### FR-16: /gl:status Updates
 
@@ -181,14 +187,17 @@
 | FR-16.1 | MUST display Wrapped Boundaries table if any wrapped boundaries exist in STATE.md |
 | FR-16.2 | Table columns: Boundary, Contracts, Locking Tests (count), Known Issues (count), Status |
 | FR-16.3 | Status values for wrapped boundaries: `wrapped` (locking tests in place), `refactored` (replaced by integration tests) |
+| FR-16.4 | MUST display a reference to `/gl:roadmap` for human-readable product view if ROADMAP.md exists |
 
 #### FR-17: /gl:help Updates
 
 | ID | Requirement |
 |----|-------------|
 | FR-17.1 | MUST add BROWNFIELD section between SETUP and BUILD sections |
-| FR-17.2 | Commands listed: `/gl:assess` (Gap analysis and risk assessment), `/gl:wrap` (Extract contracts + locking tests) |
-| FR-17.3 | FLOW line MUST update to: `map? -> assess? -> init -> design -> wrap? -> slice 1 -> ... -> ship` |
+| FR-17.2 | Commands listed in BROWNFIELD: `/gl:assess` (Gap analysis and risk assessment), `/gl:wrap` (Extract contracts + locking tests) |
+| FR-17.3 | MUST add INSIGHT section between MONITOR and SHIP sections |
+| FR-17.4 | Commands listed in INSIGHT: `/gl:roadmap` (Product roadmap and milestones), `/gl:changelog` (Human-readable changelog) |
+| FR-17.5 | FLOW line MUST update to: `map? -> assess? -> init -> design (ROADMAP.md, DECISIONS.md) -> wrap? -> slice 1 (summary) -> ... -> ship -> roadmap milestone -> ...` |
 
 #### FR-18: /gl:settings Updates
 
@@ -197,13 +206,16 @@
 | FR-18.1 | MUST display `assessor` and `wrapper` agent models in settings table |
 | FR-18.2 | Valid agents list MUST include `assessor` and `wrapper` |
 
-#### FR-19: /gl:design Updates (brownfield awareness)
+#### FR-19: /gl:design Updates (brownfield awareness + roadmap/decisions output)
 
 | ID | Requirement |
 |----|-------------|
 | FR-19.1 | IF `.greenlight/ASSESS.md` exists, designer MUST receive assessment context |
 | FR-19.2 | Designer MUST be aware of wrapped boundaries and their contracts when planning new features |
 | FR-19.3 | Designer SHOULD suggest which wrapped boundaries to refactor as part of new feature slices |
+| FR-19.4 | After design approval, MUST produce `.greenlight/ROADMAP.md` with initial milestone, slices, and architecture diagram (see FR-23) |
+| FR-19.5 | After design approval, MUST produce `.greenlight/DECISIONS.md` with all major design decisions (see FR-28) |
+| FR-19.6 | When invoked via `/gl:roadmap milestone`, MUST run a scoped design session: receive existing ROADMAP.md + DESIGN.md as context, skip init interview and stack decisions, produce new slices scoped to the milestone, append to GRAPH.json and ROADMAP.md |
 
 #### FR-20: CLAUDE.md Updates
 
@@ -231,7 +243,98 @@
 | FR-22.3 | Integration tests MUST cover at least all behaviours that locking tests covered (superset) |
 | FR-22.4 | MUST NOT be aware of locking test implementation -- only names/descriptions |
 
-### 1.4 Non-Functional Requirements
+### 1.4 Functional Requirements -- /gl:roadmap
+
+#### FR-23: Roadmap Creation and Structure
+
+| ID | Requirement |
+|----|-------------|
+| FR-23.1 | MUST produce `.greenlight/ROADMAP.md` as a living document during first `/gl:design` session |
+| FR-23.2 | ROADMAP.md MUST contain: project overview, current milestone with slice table, architecture diagram, key decisions summary |
+| FR-23.3 | Each milestone in ROADMAP.md MUST have: name, goal (one sentence), status (planning/active/complete/archived), slice table |
+| FR-23.4 | Milestone slice table columns: Slice, Description, Status, Tests, Completed, Key Decision |
+| FR-23.5 | ROADMAP.md MUST be updated automatically as slices complete (by /gl:slice orchestrator) |
+| FR-23.6 | ROADMAP.md MUST include a wrap progress section if any wrapped boundaries exist |
+
+#### FR-24: Roadmap Sub-Commands
+
+| ID | Requirement |
+|----|-------------|
+| FR-24.1 | `/gl:roadmap` (no arguments) MUST display the current ROADMAP.md contents to the user |
+| FR-24.2 | `/gl:roadmap milestone` MUST spawn gl-designer with milestone scope to plan a new milestone |
+| FR-24.3 | Milestone design session MUST receive existing ROADMAP.md and DESIGN.md as context |
+| FR-24.4 | Milestone design session MUST NOT re-run init interview or revisit stack decisions |
+| FR-24.5 | Milestone design session MUST produce: new slices appended to GRAPH.json with `milestone` field, new milestone section appended to ROADMAP.md, new decisions appended to DECISIONS.md |
+| FR-24.6 | `/gl:roadmap archive` MUST move a completed milestone from the active section to an archived section in ROADMAP.md |
+| FR-24.7 | Archived milestones MUST be compressed: milestone name, completion date, slice count, test count, one-line summary |
+| FR-24.8 | MUST read `.greenlight/config.json` for project context |
+
+#### FR-25: Auto-Generated Slice Summaries
+
+| ID | Requirement |
+|----|-------------|
+| FR-25.1 | After every `/gl:slice` completes successfully (verification passes), MUST generate a summary file at `.greenlight/summaries/{slice-id}-SUMMARY.md` |
+| FR-25.2 | Summary MUST be generated by spawning a Task (not a separate agent) with fresh context |
+| FR-25.3 | Task receives structured data: slice ID, slice name, contracts satisfied (names), test count and results, key files changed (from git diff --stat), deviation log entries (if any), security results summary |
+| FR-25.4 | Summary MUST be written in product language (what was built for users), not implementation language |
+| FR-25.5 | Summary MUST NOT be optional -- every completed slice gets a summary |
+| FR-25.6 | Summary MUST NOT be over-templated -- the Task writes a natural-language summary informed by structured data |
+| FR-25.7 | After summary is written, orchestrator MUST update ROADMAP.md: mark slice as complete, add completion date, test count, and any key decisions |
+
+#### FR-26: Wrap Summaries
+
+| ID | Requirement |
+|----|-------------|
+| FR-26.1 | After every `/gl:wrap` completes successfully, MUST generate a summary file at `.greenlight/summaries/{boundary-name}-wrap-SUMMARY.md` |
+| FR-26.2 | Wrap summary MUST be generated by spawning a Task with structured data: boundary name, contracts extracted (count and names), locking tests written (count), known security issues (count and severities), files covered |
+| FR-26.3 | Wrap summary MUST describe what was locked in product language (e.g., "Locked the authentication boundary: login, token validation, and session management are now protected by 12 locking tests") |
+| FR-26.4 | Wrap summary appears in `/gl:changelog` output alongside slice summaries |
+
+#### FR-27: /gl:quick Updates (summaries and decisions)
+
+| ID | Requirement |
+|----|-------------|
+| FR-27.1 | After `/gl:quick` completes, MUST generate a summary file at `.greenlight/summaries/quick-{timestamp}-SUMMARY.md` |
+| FR-27.2 | Quick summaries MUST follow the same format as slice summaries but are more concise |
+| FR-27.3 | IF the quick task involved a decision, MUST append to DECISIONS.md |
+| FR-27.4 | MUST update ROADMAP.md if the quick task is associated with a milestone (via user confirmation) |
+
+#### FR-28: Decision Log
+
+| ID | Requirement |
+|----|-------------|
+| FR-28.1 | MUST maintain `.greenlight/DECISIONS.md` as a single-file decision log |
+| FR-28.2 | Decision log table columns: #, Decision, Context, Chosen, Rejected, Date, Source |
+| FR-28.3 | Source column values: `design` (from /gl:design), `milestone` (from /gl:roadmap milestone), `slice:{id}` (from /gl:slice), `quick` (from /gl:quick), `wrap:{boundary}` (from /gl:wrap) |
+| FR-28.4 | `/gl:design` MUST write initial decisions to DECISIONS.md (major architectural and technical decisions from the design session) |
+| FR-28.5 | During `/gl:slice`, each agent MUST note decisions in its output; the orchestrator aggregates and appends to DECISIONS.md after the slice completes |
+| FR-28.6 | Decision numbering MUST be sequential across the entire file (D-1, D-2, D-3...) regardless of source |
+| FR-28.7 | DECISIONS.md MUST NOT duplicate the technical decisions table in DESIGN.md; DESIGN.md decisions are the initial entries, DECISIONS.md is the running log that starts from those and continues |
+
+#### FR-29: Living Architecture Diagram
+
+| ID | Requirement |
+|----|-------------|
+| FR-29.1 | ROADMAP.md MUST include an Architecture Diagram section with a text-based diagram (Mermaid or ASCII) |
+| FR-29.2 | Initial architecture diagram MUST be produced during `/gl:design` as part of ROADMAP.md creation |
+| FR-29.3 | After each `/gl:slice` completes, the summary Task MUST check if the architecture changed: new service added, new external integration, new database table, new endpoint group |
+| FR-29.4 | IF architecture changed, the Task MUST update the Architecture Diagram section in ROADMAP.md |
+| FR-29.5 | IF architecture did NOT change, the diagram MUST NOT be modified |
+| FR-29.6 | Diagram MUST remain text-based in markdown (no images, no external tools) |
+
+#### FR-30: /gl:changelog Command
+
+| ID | Requirement |
+|----|-------------|
+| FR-30.1 | `/gl:changelog` (no arguments) MUST display a full human-readable changelog from all summaries in `.greenlight/summaries/` |
+| FR-30.2 | `/gl:changelog milestone {N}` MUST display changelog scoped to a specific milestone (filter by slice milestone field) |
+| FR-30.3 | `/gl:changelog since {DATE}` MUST display changelog for entries after the given date |
+| FR-30.4 | Changelog MUST be formatted chronologically (newest first) |
+| FR-30.5 | Each changelog entry MUST include: date, slice/wrap name, one-line summary, test count |
+| FR-30.6 | Changelog is read-only -- it reads from summaries/ and formats, it does not write any files |
+| FR-30.7 | MUST read `.greenlight/config.json` for project context |
+
+### 1.5 Non-Functional Requirements
 
 | ID | Category | Requirement |
 |----|----------|-------------|
@@ -241,20 +344,26 @@
 | NFR-4 | Idempotency | Running `/gl:wrap` on an already-wrapped boundary MUST warn and ask before overwriting existing locking tests |
 | NFR-5 | Safety | `/gl:wrap` MUST NEVER modify production source code. It writes contracts and locking tests only |
 | NFR-6 | Safety | `/gl:assess` is entirely read-only except for writing ASSESS.md |
-| NFR-7 | Compatibility | Both commands MUST work with any stack Greenlight supports (Go, Python, JS/TS, Rust, Swift) |
+| NFR-7 | Compatibility | All commands MUST work with any stack Greenlight supports (Go, Python, JS/TS, Rust, Swift) |
 | NFR-8 | Fault tolerance | If gl-security agent fails during assess/wrap, the command MUST continue without security findings (warn user, note in output) |
+| NFR-9 | Context budget | Summary generation Task MUST complete within a single Task invocation. Structured data is passed in, not discovered. This keeps context usage minimal |
+| NFR-10 | Idempotency | Running `/gl:roadmap` (display) is read-only. Running `/gl:roadmap milestone` appends -- it does not overwrite existing milestones |
+| NFR-11 | Idempotency | DECISIONS.md is append-only. Entries are never modified or deleted after creation |
+| NFR-12 | Fault tolerance | If summary generation Task fails, the slice/wrap MUST still be considered complete. Summary failure MUST NOT block the TDD pipeline. Warn user and suggest running `/gl:changelog` to check for gaps |
 
-### 1.5 Constraints
+### 1.6 Constraints
 
 | Constraint | Detail |
 |------------|--------|
 | Deliverables | Markdown prompt files in `src/agents/` and `src/commands/gl/`. NOT Go code |
 | Embedding | New `.md` files must be added to Go manifest and `go:embed` directive |
 | Agent models | gl-assessor defaults to sonnet (analytical, not decision-making). gl-wrapper defaults to sonnet (follows extracted contracts) |
-| Existing flow | New commands MUST NOT break existing greenfield flow. `/gl:assess` and `/gl:wrap` are optional |
+| Existing flow | New commands MUST NOT break existing greenfield flow. `/gl:assess`, `/gl:wrap`, `/gl:roadmap`, and `/gl:changelog` are optional |
 | Commit format | All commits use conventional format enforced by lefthook/commitlint |
+| No separate agent for summaries | Summary generation uses a Task spawned by the orchestrator, not a dedicated agent definition. This keeps the agent count manageable |
+| Summaries are mandatory | Every completed slice and wrap produces a summary. This is not configurable |
 
-### 1.6 Out of Scope
+### 1.7 Out of Scope
 
 | Item | Rationale |
 |------|-----------|
@@ -266,6 +375,11 @@
 | AST parsing or static analysis tooling | Claude reads code natively. No external tooling needed |
 | Automated dependency updates | Assess identifies outdated deps. Fixing them is a separate task |
 | Test generation for untested code that is NOT being wrapped | Wrap is opt-in per boundary. Assess identifies gaps; wrap addresses them one at a time |
+| Separate docs site generator | Summaries and changelog are markdown files in .greenlight/. No static site generation |
+| Time/cost tracking per slice | Greenlight tracks what was built and decided, not how long it took |
+| Approval gates for roadmap changes | Roadmap updates happen automatically. No review workflow |
+| Optional summaries | Summaries are always generated. No configuration to skip them |
+| Over-templated summaries | The Task writes natural language, not fill-in-the-blanks. Structured data informs, not constrains |
 
 ---
 
@@ -285,37 +399,43 @@
 | TD-10 | gl-wrapper model | **Sonnet (default in balanced profile)** | Opus | Follows contracts and patterns. Work is constrained (extract what exists, write tests that pass). TDD loop catches quality issues. Upgrade to opus for complex legacy codebases |
 | TD-11 | Security during wrap | **Document only, no failing tests** | Write failing tests (like /gl:slice) | Wrap locks existing behaviour without changing it. Writing failing security tests would require code changes, which violates the wrap principle. Security issues are documented as known gaps for future slices to address |
 | TD-12 | GRAPH.json wraps field | **Optional `wraps` field on slices** | Separate wraps graph; No formal link | Minimal addition to existing data model. Slices can reference what they refactor. Dependencies resolve naturally: slice depends on understanding what the wrapped boundary does |
+| TD-13 | Milestone scoping mechanism | **Spawn gl-designer with milestone scope (lighter session)** | Separate lighter flow in roadmap orchestrator; Full design session re-run | Consistency: designer owns all design decisions. Lighter session (no init interview, no stack decisions) keeps it fast. Designer already knows how to produce slices and architecture. Avoids duplicating design logic in the roadmap command |
+| TD-14 | Wrap summary generation | **Generate summaries in summaries/ for wraps** | No summaries for wraps; Inline in STATE.md only | Wraps are meaningful project events that humans want to see in the changelog. "Locked auth boundary with 12 locking tests" is a product-level event worth recording. Consistent with slice summaries |
+| TD-15 | STATE.md vs ROADMAP.md relationship | **Both coexist. STATE.md is compact machine view, ROADMAP.md is rich human view** | STATE.md shrinks to just a pointer; STATE.md goes away entirely | STATE.md serves a different purpose: it is compact enough for orchestrators to read without burning context (80-line budget). ROADMAP.md can be long because humans read it. Some duplication is acceptable for different audiences |
+| TD-16 | Summary generation mechanism | **Orchestrator spawns a Task with fresh context and structured data** | Orchestrator writes summary inline; Separate agent definition | Task guarantees fresh context for summary writing. By the time a slice completes, the orchestrator may be at 50-70% context. Inline writing risks "completion mode" quality. Not a separate agent definition (respects the constraint), just a Task call with structured input |
+| TD-17 | Decision capture during slices | **Each agent notes decisions in output, orchestrator aggregates into DECISIONS.md** | Verifier captures all decisions; Orchestrator infers from diff | Decisions are best captured by the agent that made them, while context is fresh. Test writer notes "chose factory pattern for test data," implementer notes "used connection pooling." Orchestrator collects from agent outputs and writes to DECISIONS.md. No new agent visibility rules needed |
+| TD-18 | DECISIONS.md relationship to DESIGN.md | **DECISIONS.md is the running log, seeded from DESIGN.md technical decisions** | Duplicate DESIGN.md decisions in DECISIONS.md; Keep them entirely separate | DESIGN.md technical decisions table is the initial seed. DECISIONS.md starts with those entries and continues as the project evolves. No duplication -- DESIGN.md is the design artifact, DECISIONS.md is the living history |
+| TD-19 | Architecture diagram format | **Mermaid in ROADMAP.md** | ASCII art; Separate diagram file; External tool | Mermaid renders natively in GitHub, VS Code, and most markdown viewers. Text-based, diffable, and versionable. Keeps everything in one file (ROADMAP.md). ASCII art is harder to maintain and less readable |
+| TD-20 | Changelog generation | **Read-only command that formats from summaries/ directory** | Write a CHANGELOG.md file; Generate from git log | Reading from summaries/ gives richer context than git log (product language, not commit messages). Read-only means no stale files to maintain. Formatting is done on display, not persisted |
+| TD-21 | GRAPH.json milestone field | **Optional `milestone` field on slice objects** | Separate milestones array with slice references; No formal link | Minimal addition. Same pattern as `wraps` field. Slices belong to at most one milestone. When no milestone is specified, slice belongs to the initial/default milestone |
 
 ---
 
 ## 3. Architecture
 
-### 3.1 Brownfield Flow Integration
-
-The brownfield commands slot into the existing Greenlight flow as optional steps:
+### 3.1 Flow Integration
 
 ```
 GREENFIELD FLOW (existing):
   map? -> init -> design -> slice 1 -> slice 2 -> ... -> ship
 
-BROWNFIELD FLOW (new):
+BROWNFIELD FLOW (with brownfield support):
   map -> assess? -> init -> design -> wrap? -> slice 1 -> ... -> ship
          ^^^^^                        ^^^^
-         NEW                          NEW
+         brownfield                   brownfield
 
-Detailed brownfield sequence:
-  /gl:map        -> understand the codebase (EXISTING)
-  /gl:assess     -> identify gaps, risks, untested boundaries (NEW)
-  /gl:design     -> plan what to fix and build, informed by assessment (EXISTING, updated)
-  /gl:wrap       -> extract contracts + write locking tests for existing code (NEW)
-  /gl:slice 1    -> new features or refactored features, TDD as normal (EXISTING, updated)
+FULL FLOW (with roadmap & documentation):
+  map? -> assess? -> init -> design (ROADMAP.md, DECISIONS.md) -> wrap? (summary) -> slice 1 (summary, decisions, architecture check) -> ... -> ship -> roadmap milestone -> slice N -> ...
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^       ^^^^^^^^^^^^^^^    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^           ^^^^^^^^^^^^^^^^^^^^^^^^^
+                              produces ROADMAP.md + DECISIONS.md   auto-summary       auto-summary + decision log + architecture update          new milestone via scoped design
+
+THREE VIEWS:
+  /gl:status     -> machine view (tests, slices, wrapped boundaries)
+  /gl:roadmap    -> human product view (milestones, what was built, architecture)
+  /gl:changelog  -> human history view (chronological summaries)
 ```
 
-Both `/gl:assess` and `/gl:wrap` are optional. A user can:
-- Skip assess entirely and wrap manually
-- Skip wrap entirely and build on top of existing code
-- Assess, wrap critical boundaries, then slice new features
-- Use any combination
+Both `/gl:assess` and `/gl:wrap` remain optional. `/gl:roadmap` and `/gl:changelog` are optional commands that read auto-generated data. Summaries and decision logging are automatic (not optional) -- they are side effects of the existing slice/wrap pipeline.
 
 ### 3.2 Agent Architecture
 
@@ -341,6 +461,14 @@ gl-wrapper (NEW)
   Isolation: DELIBERATE EXCEPTION -- sees implementation AND writes locking tests
   Exception scope: only tests/locking/ directory
 ```
+
+#### No New Agents for Documentation
+
+Summary generation, decision aggregation, and architecture diagram updates are handled by:
+- **Task calls** spawned by existing orchestrators (slice, wrap, quick)
+- **Orchestrator logic** in the roadmap and changelog command definitions
+
+This keeps the agent count stable. The summary Task is not a separate agent -- it is a fresh-context Task invocation that receives structured data and writes a markdown file.
 
 #### Updated Agent Interactions
 
@@ -373,6 +501,54 @@ gl-wrapper (NEW)
   |
   +--> commit (tests + contracts atomically)
   +--> update STATE.md
+  +--> spawn Task: generate wrap summary -> summaries/{boundary}-wrap-SUMMARY.md
+  +--> update ROADMAP.md (wrap progress, if ROADMAP.md exists)
+
+
+/gl:slice orchestrator (updated)
+  |
+  +--> existing TDD pipeline (test writer -> implementer -> security -> verifier)
+  |
+  +--> after verification succeeds:
+  |      +--> collect decision notes from each agent's output
+  |      +--> spawn Task: generate slice summary
+  |      |      +--> receives: slice metadata, contracts, test results, git diff stats,
+  |      |      |    deviations, security results, decision notes
+  |      |      +--> writes: summaries/{slice-id}-SUMMARY.md
+  |      |      +--> checks: architecture change? updates ROADMAP.md diagram if yes
+  |      |
+  |      +--> append decisions to DECISIONS.md
+  |      +--> update ROADMAP.md (slice status, completion date, test count)
+  |
+  +--> commit and report
+
+
+/gl:roadmap orchestrator
+  |
+  +--> /gl:roadmap (no args): read and display ROADMAP.md
+  |
+  +--> /gl:roadmap milestone:
+  |      +--> spawn gl-designer with milestone scope
+  |      |      +--> receives: ROADMAP.md, DESIGN.md, CONTRACTS.md, STATE.md
+  |      |      +--> skips: init interview, stack decisions
+  |      |      +--> runs: lighter design session (goal, user actions, constraints)
+  |      |      +--> produces: new slices with milestone field
+  |      |
+  |      +--> append new milestone to ROADMAP.md
+  |      +--> append new slices to GRAPH.json (with milestone field)
+  |      +--> append design decisions to DECISIONS.md
+  |
+  +--> /gl:roadmap archive:
+         +--> compress completed milestone in ROADMAP.md
+         +--> move to archived section
+
+
+/gl:changelog orchestrator
+  |
+  +--> read summaries/ directory
+  +--> filter by arguments (milestone, date)
+  +--> format chronologically
+  +--> display to user (read-only, no files written)
 ```
 
 ### 3.3 Data Flow
@@ -396,6 +572,7 @@ gl-wrapper (NEW)
   ASSESS.md -------> /gl:wrap ---------> .greenlight/CONTRACTS.md ([WRAPPED] entries)
   config.json ----/      |               tests/locking/{boundary}.test.{ext}
   source code --------/  |               .greenlight/STATE.md (Wrapped Boundaries section)
+                         |               .greenlight/summaries/{boundary}-wrap-SUMMARY.md
                          v
                     gl-security
                     (document only)
@@ -405,28 +582,51 @@ gl-wrapper (NEW)
                     in STATE.md
 
 
+  DESIGN.md -------> /gl:design -------> .greenlight/ROADMAP.md (initial milestone + architecture)
+  config.json ----/                      .greenlight/DECISIONS.md (initial design decisions)
+  ASSESS.md ------/
+
+
   CONTRACTS.md -----> /gl:slice --------> Refactored code
   (with [WRAPPED])       |               tests/integration/ (new tests)
-  STATE.md ----------/   |               tests/locking/ (deleted)
+  STATE.md ----------/   |               tests/locking/ (deleted if wraps slice)
   GRAPH.json --------/   |               CONTRACTS.md ([WRAPPED] tag removed)
-  (with wraps field)     v               STATE.md (boundary status -> refactored)
+  (with wraps field)     |               STATE.md (boundary status -> refactored)
+                         |               .greenlight/summaries/{slice-id}-SUMMARY.md
+                         |               .greenlight/DECISIONS.md (appended)
+                         v               .greenlight/ROADMAP.md (updated: slice status, architecture)
                     Normal TDD loop
                     (strict isolation)
+                         |
+                         v
+                    Summary Task
+                    (fresh context)
+
+
+  ROADMAP.md -------> /gl:roadmap ------> Display (read-only)
+  DESIGN.md ------/   milestone           .greenlight/ROADMAP.md (new milestone appended)
+  CONTRACTS.md ---/                       .greenlight/GRAPH.json (new slices appended)
+  STATE.md ------/                        .greenlight/DECISIONS.md (new decisions appended)
+
+
+  summaries/ -------> /gl:changelog -----> Display (read-only, formatted chronologically)
 ```
 
 ### 3.4 Command Orchestration Patterns
 
-Both new commands follow the existing Greenlight orchestration pattern:
+All commands follow the existing Greenlight orchestration pattern:
 
-1. **Orchestrator reads state** (config.json, ASSESS.md, STATE.md)
+1. **Orchestrator reads state** (config.json, ASSESS.md, STATE.md, ROADMAP.md, DECISIONS.md)
 2. **Orchestrator resolves models** from config.json profiles
 3. **Orchestrator spawns agent** via Task with structured context (XML blocks)
 4. **Agent writes output** directly to files (agent doesn't return content to orchestrator -- saves context)
 5. **Orchestrator verifies output** (file exists, non-empty)
-6. **Orchestrator commits** with conventional format
-7. **Orchestrator reports** summary and next action
+6. **Orchestrator spawns summary Task** with structured data (post-pipeline step for slice/wrap)
+7. **Orchestrator updates documentation** (ROADMAP.md, DECISIONS.md)
+8. **Orchestrator commits** with conventional format
+9. **Orchestrator reports** summary and next action
 
-This mirrors `/gl:map` (parallel agents writing directly) and `/gl:slice` (sequential agent pipeline).
+The documentation steps (6-7) are added after the existing pipeline. They do not interfere with the TDD loop. If they fail, the slice/wrap is still considered complete.
 
 ---
 
@@ -656,7 +856,11 @@ Wrap progress: {N}/{M} boundaries wrapped
 
 **Size constraint:** This section counts toward STATE.md's 80-line budget. Keep entries concise. When a boundary is refactored, it can be compressed to a single summary line or removed entirely.
 
-### 4.4 GRAPH.json wraps Field
+**Relationship to ROADMAP.md:** STATE.md remains the compact machine view. ROADMAP.md contains richer information about the same boundaries and slices. Orchestrators read STATE.md (small, fast). Humans read ROADMAP.md (detailed, contextual).
+
+### 4.4 GRAPH.json Fields
+
+#### wraps Field (existing from brownfield design)
 
 Optional field on slice objects:
 
@@ -680,7 +884,155 @@ Optional field on slice objects:
 - A slice can wrap multiple boundaries if they're closely related
 - The `wraps` field does NOT create a dependency on the boundary being wrapped first (the boundary is already wrapped by /gl:wrap before the slice is planned)
 
-### 4.5 config.json Updates
+#### milestone Field (new)
+
+Optional field on slice objects:
+
+```json
+{
+  "id": "user-profiles",
+  "name": "User profile pages",
+  "description": "Users can view and edit their profile information",
+  "contracts": ["GetUserProfile", "UpdateUserProfile"],
+  "depends_on": ["auth"],
+  "milestone": "v2-user-experience",
+  "priority": 1,
+  "estimated_tests": 8,
+  "boundaries": ["Client -> API", "API -> Database"]
+}
+```
+
+**`milestone` field rules:**
+- String matching a milestone name in ROADMAP.md
+- When not specified, slice belongs to the initial/default milestone (from first /gl:design)
+- A slice belongs to at most one milestone
+- Milestones are created by `/gl:roadmap milestone` which spawns a scoped design session
+- `/gl:changelog milestone {name}` uses this field to filter summaries
+
+### 4.5 ROADMAP.md Structure
+
+```markdown
+# Product Roadmap
+
+Project: {project name}
+Updated: {YYYY-MM-DD}
+
+## Architecture
+
+```mermaid
+graph TD
+    A[Client] --> B[API Server]
+    B --> C[Database]
+    B --> D[External Service]
+```
+
+## Milestone: {milestone-name} [{status}]
+
+**Goal:** {one sentence describing what this milestone achieves}
+
+| Slice | Description | Status | Tests | Completed | Key Decision |
+|-------|-------------|--------|-------|-----------|--------------|
+| {id} | {what it does for users} | pending/active/complete | {N} | {date or -} | {brief or -} |
+
+### Wrap Progress
+
+| Boundary | Status | Locking Tests | Known Issues |
+|----------|--------|---------------|--------------|
+| {name} | wrapped/refactored | {N} | {N} |
+
+## Milestone: {next-milestone-name} [planning]
+
+**Goal:** {one sentence}
+
+| Slice | Description | Status | Tests | Completed | Key Decision |
+|-------|-------------|--------|-------|-----------|--------------|
+| {id} | {description} | pending | - | - | - |
+
+## Archived Milestones
+
+### {milestone-name} -- completed {date}
+
+{N} slices, {N} tests. {one-line summary of what was achieved.}
+```
+
+**Update rules:**
+- Created by `/gl:design` with the initial milestone
+- Slice rows updated by `/gl:slice` orchestrator after summary generation
+- Architecture diagram updated by summary Task when architecture changes
+- New milestones appended by `/gl:roadmap milestone`
+- Completed milestones compressed by `/gl:roadmap archive`
+- Wrap progress section updated by `/gl:wrap` orchestrator
+
+### 4.6 DECISIONS.md Structure
+
+```markdown
+# Decision Log
+
+Project: {project name}
+
+| # | Decision | Context | Chosen | Rejected | Date | Source |
+|---|----------|---------|--------|----------|------|--------|
+| D-1 | {what was decided} | {why this decision was needed} | {chosen option} | {rejected options} | {YYYY-MM-DD} | design |
+| D-2 | {what was decided} | {context} | {chosen} | {rejected} | {date} | slice:1 |
+| D-3 | {what was decided} | {context} | {chosen} | {rejected} | {date} | wrap:auth |
+| D-4 | {what was decided} | {context} | {chosen} | {rejected} | {date} | milestone |
+| D-5 | {what was decided} | {context} | {chosen} | {rejected} | {date} | quick |
+```
+
+**Rules:**
+- Sequential numbering (D-1, D-2, D-3...) across entire file regardless of source
+- Append-only -- entries are never modified or deleted
+- Source values: `design`, `milestone`, `slice:{id}`, `quick`, `wrap:{boundary}`
+- Seeded from DESIGN.md technical decisions during first `/gl:design`
+- Subsequent decisions appended by orchestrators as they complete
+- Each agent notes decisions in its output; orchestrator aggregates and appends
+
+### 4.7 Slice Summary Structure
+
+```markdown
+# Summary: {slice-name}
+
+**Slice:** {slice-id}
+**Milestone:** {milestone-name}
+**Completed:** {YYYY-MM-DD}
+**Tests:** {N} passing
+
+## What Was Built
+
+{2-4 sentences in product language describing what users can now do}
+
+## Contracts Satisfied
+
+- {ContractName1}
+- {ContractName2}
+
+## Key Files
+
+- `{path/to/file}` -- {brief description of role}
+
+## Decisions Made
+
+| Decision | Chosen | Context |
+|----------|--------|---------|
+| {decision} | {chosen} | {why} |
+
+## Deviations
+
+{List of any deviations from the plan, or "None"}
+
+## Security
+
+{Security scan results summary, or "No issues found"}
+```
+
+**Rules:**
+- Written by a Task spawned by the slice orchestrator, not by an agent
+- Task receives structured data, writes natural-language summary
+- File naming: `.greenlight/summaries/{slice-id}-SUMMARY.md`
+- For wraps: `.greenlight/summaries/{boundary-name}-wrap-SUMMARY.md`
+- For quick tasks: `.greenlight/summaries/quick-{timestamp}-SUMMARY.md`
+
+### 4.8 config.json Updates
 
 New agent entries in profiles:
 
@@ -704,6 +1056,8 @@ New agent entries in profiles:
 ```
 
 **Note:** These are added to the profile definitions in `templates/config.md` and `commands/gl/init.md`. The Go CLI does not need code changes -- config.json is a data file read by Claude Code agents, not parsed by Go.
+
+No new agent model entries are needed for roadmap, changelog, or summary generation -- these use the existing orchestrator model or Task calls.
 
 ---
 
@@ -770,6 +1124,8 @@ Next: Run /gl:wrap to lock existing boundaries with tests.
 - `tests/locking/{boundary-name}.test.{ext}` (locking test file)
 - `.greenlight/STATE.md` (Wrapped Boundaries section updated)
 - `.greenlight/ASSESS.md` (known issues updated, if file exists)
+- `.greenlight/summaries/{boundary-name}-wrap-SUMMARY.md` (wrap summary)
+- `.greenlight/ROADMAP.md` (wrap progress updated, if file exists)
 
 **Commit:** `test(wrap): lock {boundary-name}`
 
@@ -789,16 +1145,16 @@ Reading assessment... (.greenlight/ASSESS.md)
 Recommended boundaries to wrap:
 
 CRITICAL
-  1. auth — external, no contract, untested, high complexity
-  2. payments — external, implicit contract, untested
+  1. auth -- external, no contract, untested, high complexity
+  2. payments -- external, implicit contract, untested
 
 HIGH
-  3. users — external, implicit contract, partial tests
-  4. api-routes — external, no contract, tested
+  3. users -- external, implicit contract, partial tests
+  4. api-routes -- external, no contract, tested
 
 MEDIUM
-  5. utils — internal, no contract, tested
-  6. config — internal, implicit contract, tested
+  5. utils -- internal, no contract, tested
+  6. config -- internal, implicit contract, tested
 
 Which boundary? > 1
 
@@ -833,24 +1189,149 @@ Running full suite...
 Security baseline...
   2 known issues documented (1 HIGH, 1 MEDIUM)
 
+Summary written to .greenlight/summaries/auth-wrap-SUMMARY.md
+
 Committed: test(wrap): lock auth
 
 Wrap progress: 1/6 boundaries wrapped
 
 Next:
-  /gl:wrap — wrap next boundary (recommended: payments)
-  /gl:design — plan new features
-  /gl:slice 1 — start building
+  /gl:wrap -- wrap next boundary (recommended: payments)
+  /gl:design -- plan new features
+  /gl:slice 1 -- start building
 ```
 
-### 5.3 Updated /gl:help Output
+### 5.3 /gl:roadmap Command
+
+**Invocation:** `/gl:roadmap`, `/gl:roadmap milestone`, `/gl:roadmap archive`
+
+**Prerequisites:**
+- `.greenlight/ROADMAP.md` must exist (created by `/gl:design`)
+
+**Sub-commands:**
+
+#### `/gl:roadmap` (display)
+
+Read-only. Displays the current ROADMAP.md contents to the user. No files modified.
+
+#### `/gl:roadmap milestone`
+
+Interactive. Plans a new milestone.
+
+**Flow:**
+```
+/gl:roadmap milestone
+
+Current roadmap: 2 milestones (1 active, 1 complete)
+  v1-mvp: complete (5 slices, 47 tests)
+  v2-user-experience: active (3/5 slices complete)
+
+Planning new milestone...
+
+Spawning designer (milestone scope)...
+
+[Designer runs a lighter design session]
+  - Receives: ROADMAP.md, DESIGN.md, CONTRACTS.md, STATE.md
+  - Skips: init interview, stack decisions
+  - Asks: What's the goal? What user actions? Any new constraints?
+  - Produces: new slices with milestone field
+
+New milestone added: v3-integrations
+  Goal: Connect to third-party payment and notification services
+  Slices: 4 new slices added to GRAPH.json
+  Decisions: 3 new decisions added to DECISIONS.md
+
+ROADMAP.md updated.
+GRAPH.json updated.
+DECISIONS.md updated.
+
+Next: /gl:slice {next-slice-id} to start building
+```
+
+**Output files:**
+- `.greenlight/ROADMAP.md` (new milestone section appended)
+- `.greenlight/GRAPH.json` (new slices appended with milestone field)
+- `.greenlight/DECISIONS.md` (new design decisions appended)
+
+**Commit:** `docs: plan milestone {milestone-name}`
+
+#### `/gl:roadmap archive`
+
+Interactive. Archives a completed milestone.
+
+**Flow:**
+```
+/gl:roadmap archive
+
+Completed milestones available for archiving:
+  1. v1-mvp (5 slices, 47 tests, completed 2026-01-15)
+
+Archive which milestone? > 1
+
+Archived: v1-mvp
+  Compressed from 12 lines to 1 summary line in ROADMAP.md
+
+Next: /gl:roadmap to view updated roadmap
+```
+
+**Output files:**
+- `.greenlight/ROADMAP.md` (milestone moved to Archived section, compressed)
+
+**Commit:** `docs: archive milestone {milestone-name}`
+
+### 5.4 /gl:changelog Command
+
+**Invocation:** `/gl:changelog`, `/gl:changelog milestone {name}`, `/gl:changelog since {DATE}`
+
+**Prerequisites:**
+- `.greenlight/summaries/` directory must exist with at least one summary file
+
+**Output:** Display only (read-only, no files written)
+
+**Format:**
+```
+/gl:changelog
+
+CHANGELOG -- {project name}
+
+2026-02-09  slice:user-profiles     Users can view and edit profiles    8 tests
+2026-02-08  wrap:auth               Locked authentication boundary     12 locking tests
+2026-02-07  slice:registration      Users can register with email      6 tests
+2026-02-06  quick                   Fix validation edge case           2 tests
+
+4 entries (2 slices, 1 wrap, 1 quick)
+```
 
 ```
-GREENLIGHT v1.x — TDD-first development for Claude Code
+/gl:changelog milestone v2-user-experience
+
+CHANGELOG -- v2-user-experience
+
+2026-02-09  slice:user-profiles     Users can view and edit profiles    8 tests
+2026-02-08  slice:notifications     Users receive email notifications   5 tests
+
+2 entries
+```
+
+```
+/gl:changelog since 2026-02-08
+
+CHANGELOG -- since 2026-02-08
+
+2026-02-09  slice:user-profiles     Users can view and edit profiles    8 tests
+2026-02-08  wrap:auth               Locked authentication boundary     12 locking tests
+
+2 entries
+```
+
+### 5.5 Updated /gl:help Output
+
+```
+GREENLIGHT v1.x -- TDD-first development for Claude Code
 
 SETUP
   /gl:init              Brief interview + project config
-  /gl:design            System design session -> DESIGN.md
+  /gl:design            System design -> DESIGN.md, ROADMAP.md, DECISIONS.md
   /gl:map               Analyse existing codebase first
   /gl:settings          Configure models, mode, options
 
@@ -860,9 +1341,13 @@ BROWNFIELD
 
 BUILD
   /gl:slice <N>         TDD loop: test -> implement ->
-                        security -> verify -> commit
+                        security -> verify -> commit -> summary
   /gl:quick             Ad-hoc task with test guarantees
   /gl:add-slice         Add new slice to graph
+
+INSIGHT
+  /gl:roadmap           Product roadmap + milestones
+  /gl:changelog         Human-readable changelog from summaries
 
 MONITOR
   /gl:status            Real progress from test results
@@ -873,13 +1358,16 @@ SHIP
   /gl:ship              Full audit + deploy readiness
 
 FLOW
-  map? -> assess? -> init -> design -> wrap? -> slice 1 -> ... -> ship
+  map? -> assess? -> init -> design (ROADMAP, DECISIONS) -> wrap? ->
+  slice 1 (summary) -> ... -> ship -> roadmap milestone -> ...
+
+Three views: /gl:status (machine), /gl:roadmap (product), /gl:changelog (history)
 
 Tests are the source of truth. Green means done.
 Security is built in, not bolted on.
 ```
 
-### 5.4 Updated /gl:status Output (with wrapped boundaries)
+### 5.6 Updated /gl:status Output (with wrapped boundaries and roadmap reference)
 
 ```
 GREENLIGHT STATUS
@@ -900,6 +1388,8 @@ Wrap: 2/6 boundaries wrapped, 1 refactored
 
 Next: /gl:slice 2 (fix failing)
   or: /gl:wrap (wrap next boundary)
+
+Product view: /gl:roadmap | History: /gl:changelog
 ```
 
 ---
@@ -937,6 +1427,16 @@ When `/gl:slice` processes a slice with `wraps` field:
 4. Security agent checks whether KNOWN issues from the wrapped contract's Security section have been addressed
 5. If known issues persist, they are flagged but do not block the slice (they were pre-existing)
 
+### 6.4 Security in Documentation Artifacts
+
+Summaries, ROADMAP.md, DECISIONS.md, and changelog output may reference security findings. Rules:
+
+- Summaries include a Security section with results summary (not full details)
+- DECISIONS.md may record security-related decisions (e.g., "chose argon2 over bcrypt")
+- ROADMAP.md does NOT include security details -- it references wrap progress and known issue counts only
+- Changelog displays summary-level information only
+- No sensitive data (credentials, API keys, PII) appears in any documentation artifact
+
 ---
 
 ## 7. Deployment
@@ -951,6 +1451,8 @@ All files go in `src/` directory and are markdown prompt files:
 | `src/agents/gl-wrapper.md` | Agent definition | Contract extraction + locking test agent |
 | `src/commands/gl/assess.md` | Command definition | /gl:assess orchestrator |
 | `src/commands/gl/wrap.md` | Command definition | /gl:wrap orchestrator |
+| `src/commands/gl/roadmap.md` | Command definition | /gl:roadmap orchestrator (display, milestone, archive) |
+| `src/commands/gl/changelog.md` | Command definition | /gl:changelog orchestrator (display, milestone filter, date filter) |
 
 ### 7.2 Existing Files to Update
 
@@ -958,12 +1460,15 @@ All files go in `src/` directory and are markdown prompt files:
 |------|--------|
 | `src/agents/gl-architect.md` | Add `[WRAPPED]` contract recognition rules |
 | `src/agents/gl-test-writer.md` | Add locking test awareness for wraps-field slices |
-| `src/commands/gl/slice.md` | Add wraps field handling, locking-to-integration transition |
-| `src/commands/gl/status.md` | Add Wrapped Boundaries table display |
-| `src/commands/gl/help.md` | Add BROWNFIELD section, update FLOW line |
+| `src/commands/gl/design.md` | Add ROADMAP.md and DECISIONS.md production after design approval. Add milestone-scoped design session support (invoked by /gl:roadmap milestone) |
+| `src/commands/gl/slice.md` | Add wraps field handling, locking-to-integration transition. Add post-pipeline summary Task spawning, ROADMAP.md update, DECISIONS.md aggregation, architecture change detection |
+| `src/commands/gl/quick.md` | Add summary generation, decision logging, optional ROADMAP.md association |
+| `src/commands/gl/status.md` | Add Wrapped Boundaries table display. Add roadmap/changelog reference line |
+| `src/commands/gl/help.md` | Add BROWNFIELD section, add INSIGHT section, update FLOW line, add three-views tagline |
 | `src/commands/gl/settings.md` | Add assessor and wrapper to agent list |
+| `src/commands/gl/init.md` | Update default config JSON with assessor and wrapper agent model entries |
 | `src/CLAUDE.md` | Add gl-assessor and gl-wrapper to isolation table, add locking test exception note |
-| `README.md` (project root) | Add brownfield section with flow diagram |
+| `README.md` (project root) | Add brownfield section, add documentation system section, update flow diagram |
 
 ### 7.3 Go CLI Changes (minimal)
 
@@ -972,17 +1477,31 @@ These are the only Go code changes needed:
 | File | Change |
 |------|--------|
 | `main.go` | No change needed -- `go:embed src/agents/*.md src/commands/gl/*.md` already uses wildcards that will pick up new `.md` files |
-| `internal/installer/installer.go` | Add 4 new entries to `Manifest` slice: `agents/gl-assessor.md`, `agents/gl-wrapper.md`, `commands/gl/assess.md`, `commands/gl/wrap.md` |
+| `internal/installer/installer.go` | Add 6 new entries to `Manifest` slice: `agents/gl-assessor.md`, `agents/gl-wrapper.md`, `commands/gl/assess.md`, `commands/gl/wrap.md`, `commands/gl/roadmap.md`, `commands/gl/changelog.md` |
 
 The `go:embed` directive already uses `src/agents/*.md` and `src/commands/gl/*.md` globs, so new markdown files in those directories are automatically embedded. Only the Manifest slice (which controls install/uninstall/check) needs updating.
 
 ### 7.4 Test Updates
 
-Existing Go tests that validate the manifest (if any) will need the expected file count updated from the current count to current + 4.
+Existing Go tests that validate the manifest (if any) will need the expected file count updated from the current count to current + 6 (was +4 for brownfield only, now +6 with roadmap and changelog).
 
 ### 7.5 config.json Template Update
 
 `src/templates/config.md` needs the profiles updated to include `assessor` and `wrapper` agent model entries. The init command template in `src/commands/gl/init.md` also needs the default config JSON updated.
+
+No new agent model entries needed for roadmap, changelog, or summary generation.
+
+### 7.6 Runtime Files Created by Commands
+
+These files are created at runtime by Claude Code agents, not embedded in the Go binary:
+
+| File | Created by | Purpose |
+|------|-----------|---------|
+| `.greenlight/ROADMAP.md` | /gl:design | Living product roadmap with milestones and architecture |
+| `.greenlight/DECISIONS.md` | /gl:design | Running decision log, seeded from design decisions |
+| `.greenlight/summaries/{slice-id}-SUMMARY.md` | /gl:slice | Human-readable slice completion summary |
+| `.greenlight/summaries/{boundary}-wrap-SUMMARY.md` | /gl:wrap | Human-readable wrap completion summary |
+| `.greenlight/summaries/quick-{timestamp}-SUMMARY.md` | /gl:quick | Human-readable quick task summary |
 
 ---
 
@@ -1001,6 +1520,13 @@ Existing Go tests that validate the manifest (if any) will need the expected fil
 | Cross-boundary locking tests | Design | Current model wraps one boundary at a time. Cross-boundary interactions are tested via /gl:slice integration tests |
 | Visual diff for contract extraction | Design | Could show side-by-side code vs. extracted contract. Nice-to-have UX improvement |
 | Wrap undo / unwrap command | Design | Currently you'd delete locking tests and [WRAPPED] contracts manually. Formal undo could be a future command |
+| Separate docs site generator | Spec (explicit exclusion) | Summaries and changelog are markdown files. No static site generation needed |
+| Time/cost tracking per slice | Spec (explicit exclusion) | Track what was built and decided, not how long it took |
+| Approval gates for roadmap changes | Spec (explicit exclusion) | Roadmap updates happen automatically. No review workflow |
+| Roadmap export formats | Design | Could export roadmap to HTML, PDF, or project management tools. Future consideration |
+| Cross-milestone dependency tracking | Design | Slices can depend on slices in other milestones via GRAPH.json depends_on, but no formal milestone-level dependency. Sufficient for now |
+| Decision impact analysis | Design | Could track which decisions were later revised or caused problems. Interesting but premature |
+| Summary search/query | Design | Could search across summaries for specific decisions, patterns, or files. /gl:changelog covers the basic case |
 
 ---
 
@@ -1017,7 +1543,7 @@ Decisions locked during the design session. These are final and should not be re
 | UD-3 | Test coverage detection | **Both file mapping (always) and coverage command (optional).** File existence mapping always runs (fast, no config needed). Actual test coverage runs only if `test.coverage_command` is configured in config.json. If not configured, note in ASSESS.md that coverage percentages are unavailable. | Running tests on unknown codebase can have side effects. File mapping gives 80% of value |
 | UD-4 | Wrapped boundary tracking | **Separate "Wrapped Boundaries" section in STATE.md.** Different lifecycle from slices: next -> wrapped (not the full slice status flow). Slices can depend on wrapped boundaries via `wraps` field in GRAPH.json. When a slice refactors a wrapped boundary: read locking tests, write integration tests, verify both pass, then remove locking tests and `[WRAPPED]` tag. | Different lifecycle. Keeps slice table clean. At-a-glance brownfield progress |
 
-### Gray Area Decisions
+### Gray Area Decisions (Brownfield)
 
 | # | Gray Area | Decision | Rationale |
 |---|-----------|----------|-----------|
@@ -1026,10 +1552,22 @@ Decisions locked during the design session. These are final and should not be re
 | UD-7 | Assess output ordering | **Priority-tiered list (Critical / High / Medium), not sequenced order.** No dependency tracking between wrap targets. | Wrap order rarely has real dependencies. Priority tiers are simpler and sufficient |
 | UD-8 | Locking test file organization | **One file per boundary: `tests/locking/{boundary-name}.test.{ext}`.** | Clean directory structure. Easy to see what's wrapped. One file to delete when refactored |
 
+### Gray Area Decisions (Roadmap & Documentation)
+
+| # | Gray Area | Decision | Rationale |
+|---|-----------|----------|-----------|
+| UD-12 | Milestone scoping mechanism | **Spawn gl-designer with milestone scope.** Lighter session: receives existing ROADMAP.md + DESIGN.md as context, skips init interview and stack decisions, produces new slices scoped to the milestone, appends to GRAPH.json and ROADMAP.md. | Consistency: designer owns all design decisions. Avoids duplicating design logic in the roadmap command. Lighter session keeps it fast |
+| UD-13 | Wrap summaries | **Generate summaries in summaries/ for wraps.** Wrap summaries appear in changelog alongside slice summaries. Format: what was locked, contracts extracted, locking tests written, known issues. | Wraps are meaningful project events that humans want to see in the history. Consistent treatment with slice summaries |
+| UD-14 | STATE.md vs ROADMAP.md relationship | **Both coexist. STATE.md is the compact machine view (80-line budget, read by orchestrators). ROADMAP.md is the rich human view (milestones, architecture, decisions).** Some duplication is acceptable because they serve different audiences. | STATE.md must stay small for orchestrator context budget. ROADMAP.md can be long because humans read it. Different audiences, different formats |
+| UD-15 | Summary generation context budget | **Orchestrator spawns a Task with fresh context for summary generation.** Task receives structured data (slice metadata, contracts, test results, git diff stats, deviations, security results, decision notes). Not a separate agent definition, just a Task call. | Fresh context guarantees summary quality. By the time a slice completes, the orchestrator may be at 50-70% context. Inline writing risks "completion mode" degradation |
+| UD-16 | Decision capture during slices | **Each agent notes decisions in its output, orchestrator aggregates into DECISIONS.md.** Test writer notes "chose factory pattern for test data," implementer notes "used connection pooling." Orchestrator collects and appends. | Decisions are best captured by the agent that made them, while context is fresh. No new agent visibility rules needed. Orchestrator is a natural aggregation point |
+
 ### Files Specification
 
 | # | Category | Files |
 |---|----------|-------|
-| UD-9 | New files | `src/agents/gl-assessor.md`, `src/agents/gl-wrapper.md`, `src/commands/gl/assess.md`, `src/commands/gl/wrap.md` |
-| UD-10 | Updated files | `src/agents/gl-architect.md`, `src/agents/gl-test-writer.md`, `src/commands/gl/slice.md`, `src/commands/gl/status.md`, `src/commands/gl/help.md`, `src/commands/gl/settings.md`, `src/CLAUDE.md`, `README.md` |
-| UD-11 | Go CLI changes | `internal/installer/installer.go` (manifest update only). No new Go code |
+| UD-9 | New files (brownfield) | `src/agents/gl-assessor.md`, `src/agents/gl-wrapper.md`, `src/commands/gl/assess.md`, `src/commands/gl/wrap.md` |
+| UD-10 | New files (documentation) | `src/commands/gl/roadmap.md`, `src/commands/gl/changelog.md` |
+| UD-11 | Updated files | `src/agents/gl-architect.md`, `src/agents/gl-test-writer.md`, `src/commands/gl/design.md`, `src/commands/gl/slice.md`, `src/commands/gl/quick.md`, `src/commands/gl/status.md`, `src/commands/gl/help.md`, `src/commands/gl/settings.md`, `src/commands/gl/init.md`, `src/CLAUDE.md`, `README.md` |
+| UD-17 | Go CLI changes | `internal/installer/installer.go` (manifest update: +6 entries). No new Go code |
+| UD-18 | Runtime files | `.greenlight/ROADMAP.md`, `.greenlight/DECISIONS.md`, `.greenlight/summaries/{slice-id}-SUMMARY.md`, `.greenlight/summaries/{boundary}-wrap-SUMMARY.md`, `.greenlight/summaries/quick-{timestamp}-SUMMARY.md` |
