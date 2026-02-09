@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/atlantic-blue/greenlight/compare/v1.2.0...v1.3.0) (2026-02-08)
+
+
+### Features
+
+* support brown projects ([#3](https://github.com/atlantic-blue/greenlight/issues/3)) ([16a760a](https://github.com/atlantic-blue/greenlight/commit/16a760a0c576950595abbc2acd55d789a151721f))
+
 # [1.2.0](https://github.com/atlantic-blue/greenlight/compare/v1.1.0...v1.2.0) (2026-02-08)
 
 
