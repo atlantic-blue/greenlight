@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/atlantic-blue/greenlight/compare/v1.3.0...v1.4.0) (2026-02-09)
+
+
+### Features
+
+* trigger release ([b2b36a7](https://github.com/atlantic-blue/greenlight/commit/b2b36a7d93413dc53275a680497aed2518cc39fd))
+
 # [1.3.0](https://github.com/atlantic-blue/greenlight/compare/v1.2.0...v1.3.0) (2026-02-08)
 
 
