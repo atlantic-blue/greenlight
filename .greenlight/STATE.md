@@ -21,18 +21,22 @@ Mode: yolo
 | S-09 | Boundary Wrapping | complete | 0 | 0 | S-12 |
 | S-10 | Brownfield-Aware Commands | complete | 0 | 0 | S-12 |
 | S-11 | Locking-to-Integration | complete | 0 | 0 | S-09, S-12 |
+| S-13 | Documentation Infrastructure | complete | 24 | 0 | S-12 |
+| S-14 | Auto-Summaries and Decision Aggregation | complete | 38 | 0 | S-13 |
+| S-15 | Roadmap Command | complete | 29 | 0 | S-13 |
+| S-16 | Changelog Command | complete | 30 | 0 | S-13 |
 
-Progress: [████████████] 12/12 slices
+Progress: [████████████████] 16/16 slices
 
 ## Current
 
-All slices complete.
-Last activity: 2026-02-08 — S-11 complete (wraps field, architect + test writer updates)
+Building documentation features.
+Last activity: 2026-02-09 — S-16 complete (changelog display, milestone filter, date filter). ALL SLICES COMPLETE.
 
 ## Test Summary
 
-Total: 236 passing, 0 failing, 0 security
-Last run: 2026-02-08
+Total: 395 passing, 0 failing, 0 security
+Last run: 2026-02-09
 
 ## Decisions
 
@@ -44,6 +48,7 @@ Last run: 2026-02-08
 - UD-2: gl-wrapper breaks isolation deliberately (locking tests only)
 - UD-3: File mapping always + coverage optional
 - UD-4: Separate Wrapped Boundaries section in STATE.md
+- UD-5: Markdown content tests read actual src/ files via os.ReadFile
 
 ## Blockers
 
@@ -51,5 +56,5 @@ None
 
 ## Session
 
-Last session: 2026-02-08
+Last session: 2026-02-09
 Resume file: None

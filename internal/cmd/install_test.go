@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/cmd"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 30 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 32 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -26,6 +26,7 @@ func buildTestFS() fstest.MapFS {
 		"agents/gl-wrapper.md":                     &fstest.MapFile{Data: []byte("# Wrapper\n")},
 		"commands/gl/add-slice.md":                 &fstest.MapFile{Data: []byte("# Add Slice\n")},
 		"commands/gl/assess.md":                    &fstest.MapFile{Data: []byte("# Assess\n")},
+		"commands/gl/changelog.md":                 &fstest.MapFile{Data: []byte("# Changelog\n")},
 		"commands/gl/design.md":                    &fstest.MapFile{Data: []byte("# Design\n")},
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
@@ -33,6 +34,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/pause.md":                     &fstest.MapFile{Data: []byte("# Pause\n")},
 		"commands/gl/quick.md":                     &fstest.MapFile{Data: []byte("# Quick\n")},
 		"commands/gl/resume.md":                    &fstest.MapFile{Data: []byte("# Resume\n")},
+		"commands/gl/roadmap.md":                   &fstest.MapFile{Data: []byte("# Roadmap\n")},
 		"commands/gl/settings.md":                  &fstest.MapFile{Data: []byte("# Settings\n")},
 		"commands/gl/ship.md":                      &fstest.MapFile{Data: []byte("# Ship\n")},
 		"commands/gl/slice.md":                     &fstest.MapFile{Data: []byte("# Slice\n")},

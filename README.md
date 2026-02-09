@@ -39,8 +39,8 @@ This matters because:
 
 A set of Claude Code slash commands, agents, and engineering standards that enforce test-driven development:
 
-- **8 agents** with strict isolation boundaries (designer, architect, test writer, implementer, security, verifier, debugger, codebase mapper)
-- **12 slash commands** (`/gl:init`, `/gl:design`, `/gl:slice`, `/gl:ship`, etc.) that orchestrate the workflow
+- **10 agents** with strict isolation boundaries (designer, architect, test writer, implementer, security, verifier, debugger, codebase mapper, assessor, wrapper)
+- **16 slash commands** (`/gl:init`, `/gl:design`, `/gl:slice`, `/gl:ship`, etc.) that orchestrate the workflow
 - **Engineering standards** (`CLAUDE.md`) covering error handling, naming, security, API design, testing, and more
 - **Context degradation awareness** agents stay under 50% context usage to maintain quality
 
@@ -130,6 +130,8 @@ Each slice is independently testable, committable, and deployable.
 | Security | Diffs, contracts | Test details | Fix production code |
 | Verifier | Everything | N/A | Modify any code |
 | Debugger | Everything | N/A | Modify tests (without approval) |
+| Assessor | Codebase docs, test results | N/A (read-only) | Modify any code |
+| Wrapper | Implementation code, existing tests | N/A | Modify production code (only writes locking tests) |
 
 ## Commands
 
@@ -140,6 +142,12 @@ Each slice is independently testable, committable, and deployable.
 | `/gl:design` | System design session: requirements, research, architecture |
 | `/gl:map` | Analyse existing codebase (brownfield) |
 | `/gl:settings` | Configure model profiles, mode, workflow |
+
+### Brownfield
+| Command | Description |
+|---------|-------------|
+| `/gl:assess` | Gap analysis and risk assessment for existing codebases |
+| `/gl:wrap` | Extract contracts and locking tests from existing boundaries |
 
 ### Build
 | Command | Description |
@@ -152,6 +160,8 @@ Each slice is independently testable, committable, and deployable.
 | Command | Description |
 |---------|-------------|
 | `/gl:status` | Progress dashboard from test results |
+| `/gl:roadmap` | Display roadmap, plan milestones, archive completed work |
+| `/gl:changelog` | Chronological changelog from summaries, with filtering |
 | `/gl:pause` | Save state for next session |
 | `/gl:resume` | Restore and continue |
 
@@ -162,12 +172,27 @@ Each slice is independently testable, committable, and deployable.
 
 ## Typical Flow
 
-1. `/gl:map` — analyse existing codebase (optional, for brownfield projects)
-2. `/gl:init` — brief interview, scaffold project config
-3. `/gl:design` — system design: requirements, research, architecture, contracts
-4. `/gl:slice 1` — TDD loop: test, implement, security scan, verify, commit
-5. `/gl:slice 2` ... `/gl:slice N` — repeat for each slice
-6. `/gl:ship` — full security audit + deploy readiness
+### Greenfield
+1. `/gl:init` — brief interview, scaffold project config
+2. `/gl:design` — system design: requirements, research, architecture, contracts
+3. `/gl:slice 1` — TDD loop: test, implement, security scan, verify, commit
+4. `/gl:slice 2` ... `/gl:slice N` — repeat for each slice
+5. `/gl:ship` — full security audit + deploy readiness
+
+### Brownfield (existing codebase)
+1. `/gl:map` — analyse existing codebase structure
+2. `/gl:assess` — gap analysis, identify risks and missing coverage
+3. `/gl:wrap` — extract contracts and locking tests from existing boundaries
+4. `/gl:init` — brief interview, scaffold project config
+5. `/gl:design` — system design incorporating existing architecture
+6. `/gl:slice 1` ... `/gl:slice N` — build new features with TDD
+7. `/gl:ship` — full security audit + deploy readiness
+
+### Ongoing
+- `/gl:quick` — ad-hoc bug fixes and small features (still test-first)
+- `/gl:roadmap milestone` — plan next milestone, add slices to the graph
+- `/gl:changelog` — view completed work history
+- `/gl:roadmap archive` — archive completed milestones
 
 ## Configuration
 
@@ -212,8 +237,8 @@ After `greenlight install` and `/gl:init`:
 
 ```
 .claude/
-  commands/gl/          Slash commands (12 commands)
-  agents/               Agent definitions (8 agents)
+  commands/gl/          Slash commands (16 commands)
+  agents/               Agent definitions (10 agents)
   references/           Shared protocols (3 docs)
   templates/            Schema templates (2 docs)
 
@@ -223,6 +248,10 @@ After `greenlight install` and `/gl:init`:
   CONTRACTS.md          Typed contracts (from architect)
   GRAPH.json            Dependency DAG
   STATE.md              Slice progress tracker
+  ROADMAP.md            Product roadmap with milestone tracking
+  DECISIONS.md          Decision log with source tracing
+  QUICK.md              Ad-hoc task history
+  summaries/            Per-slice, per-wrap, and quick task summaries
   config.json           Settings
 
 CLAUDE.md               Engineering standards

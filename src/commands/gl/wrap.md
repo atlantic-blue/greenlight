@@ -417,7 +417,50 @@ state = update_wrap_progress(state, wrapped_count, total_boundaries)
 write(".greenlight/STATE.md", state)
 ```
 
-## Step 6: Display Summary
+## Step 6: Generate Wrap Summary and Update ROADMAP.md
+
+After successful wrap commit, generate summary and update documentation.
+
+### 6a: Wrap Summary Generation (C-42)
+
+Spawn a Task with fresh context to write the wrap summary:
+
+```
+Task(prompt="
+Collect and document the following information for wrapped boundary {boundary_name}:
+
+<wrap_data>
+Boundary: {boundary_name}
+Contracts extracted: {contract_count}
+Locking tests written: {test_count}
+Security issues documented: {issue_count}
+Files analysed: {list}
+Test file: tests/locking/{boundary-name}.test.{ext}
+Status: wrapped
+</wrap_data>
+
+Write a summary to `.greenlight/summaries/{boundary-name}-wrap-SUMMARY.md`.
+
+Summary failure does not block wrap completion.
+", subagent_type="gl-summarizer", model="{resolved_model.summarizer}", description="Generate wrap summary for {boundary_name}")
+```
+
+If Task fails, log warning and continue. Summary generation is non-blocking.
+
+### 6b: ROADMAP.md Wrap Progress Update (C-45)
+
+If ROADMAP.md exists:
+
+1. Read ROADMAP.md
+2. Find or create "Wrap Progress" section
+3. Add boundary row: `| {boundary_name} | {contract_count} contracts | {test_count} tests | {date} |`
+4. Update wrap progress counter if present
+
+If ROADMAP.md doesn't exist, skip with warning.
+
+---
+
+## Step 7: Display Summary
 
 ```python
 print(f"""

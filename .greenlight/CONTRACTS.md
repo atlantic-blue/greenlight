@@ -1672,7 +1672,957 @@ Invariants:
 
 ---
 
-## User Action Mapping
+---
+
+# Documentation & Roadmap Contracts
+
+> **Scope:** `/gl:roadmap`, `/gl:changelog`, auto-summaries, decision log, living architecture diagram
+> **Deliverables:** Markdown prompt files (commands + updates to existing commands/agents), NOT Go code
+> **Date:** 2026-02-09
+> **Design Reference:** DESIGN.md sections 1.4-1.6, Technical Decisions TD-13 through TD-21, FRs 23-30
+
+---
+
+## Documentation Contract Index
+
+| # | Contract | Boundary | Slice |
+|---|----------|----------|-------|
+| C-36 | DesignRoadmapProduction | /gl:design orchestrator -> Filesystem (ROADMAP.md) | S-13 |
+| C-37 | DesignDecisionsSeeding | /gl:design orchestrator -> Filesystem (DECISIONS.md) | S-13 |
+| C-38 | ManifestDocumentationUpdate | Go CLI -> Manifest (2 new file paths) | S-13 |
+| C-39 | HelpInsightSection | /gl:help command -> User (INSIGHT section) | S-13 |
+| C-40 | StatusDocumentationReference | /gl:status command -> User (roadmap/changelog reference) | S-13 |
+| C-41 | SliceSummaryGeneration | /gl:slice orchestrator -> Summary Task -> Filesystem | S-14 |
+| C-42 | WrapSummaryGeneration | /gl:wrap orchestrator -> Summary Task -> Filesystem | S-14 |
+| C-43 | QuickSummaryGeneration | /gl:quick orchestrator -> Summary Task -> Filesystem | S-14 |
+| C-44 | DecisionAggregation | /gl:slice orchestrator -> Filesystem (DECISIONS.md) | S-14 |
+| C-45 | RoadmapAutoUpdate | Orchestrators (slice/wrap) -> Filesystem (ROADMAP.md) | S-14 |
+| C-46 | RoadmapDisplay | User -> /gl:roadmap command (display) | S-15 |
+| C-47 | RoadmapMilestonePlanning | User -> /gl:roadmap milestone -> gl-designer | S-15 |
+| C-48 | RoadmapMilestoneArchive | User -> /gl:roadmap archive -> Filesystem (ROADMAP.md) | S-15 |
+| C-49 | ChangelogDisplay | User -> /gl:changelog command (display) | S-16 |
+| C-50 | ChangelogFiltering | /gl:changelog command -> Summary filtering (milestone, date) | S-16 |
+
+---
+
+## S-13: Documentation Infrastructure and Design Update
+
+*User Action: "User can start a project with a product roadmap and decision log from day one"*
+
+### C-36: DesignRoadmapProduction
+
+```
+Contract: DesignRoadmapProduction
+Boundary: /gl:design orchestrator -> Filesystem (.greenlight/ROADMAP.md)
+Slice: S-13 (Documentation Infrastructure and Design Update)
+Design refs: FR-19.4, FR-23.1, FR-23.2, FR-23.3, FR-23.4, FR-23.6, FR-29.1, FR-29.2, TD-15, TD-19
+
+COMMAND UPDATE: src/commands/gl/design.md
+
+Behaviour (after design approval):
+  1. Produce .greenlight/ROADMAP.md containing:
+     - Project overview (name, updated date)
+     - Architecture Diagram section with Mermaid diagram (FR-29.1, FR-29.2)
+     - Initial milestone section with: name, goal, status (active), slice table (FR-23.3, FR-23.4)
+     - Wrap progress section (if wrapped boundaries exist in STATE.md) (FR-23.6)
+     - Empty Archived Milestones section
+  2. Slice table columns: Slice, Description, Status, Tests, Completed, Key Decision (FR-23.4)
+  3. All slices from GRAPH.json are listed in the initial milestone's slice table with status=pending
+  4. Commit ROADMAP.md as part of design commit
+
+Input (additional context for ROADMAP.md generation):
+  - GRAPH.json (slices for milestone table)
+  - DESIGN.md (architecture for diagram, project overview)
+  - STATE.md (wrapped boundaries, if any)
+  - config.json (project name)
+
+Output:
+  - .greenlight/ROADMAP.md following schema in DESIGN.md section 4.5
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoGraphJson | GRAPH.json does not exist after design approval | Create ROADMAP.md with empty slice table. Note: "No slices defined yet" |
+  | DiagramGenerationFailure | Cannot produce Mermaid diagram from design | Create ROADMAP.md with placeholder diagram: "Architecture diagram pending" |
+
+Invariants:
+  - ROADMAP.md is produced as part of /gl:design, not as a separate step
+  - Architecture diagram uses Mermaid format (TD-19), text-based, no images (FR-29.6)
+  - Initial milestone is always named from the design session's scope
+  - Every slice in GRAPH.json appears in the milestone slice table
+  - ROADMAP.md follows the exact schema in DESIGN.md section 4.5
+  - ROADMAP.md is created, never appended to, during /gl:design (fresh start)
+  - When invoked via /gl:roadmap milestone (FR-19.6), ROADMAP.md is appended to, not overwritten
+  - Wrap progress section is present only if STATE.md has wrapped boundaries
+
+Security:
+  - No sensitive data in ROADMAP.md (no credentials, API keys, PII)
+  - ROADMAP.md does not include security finding details, only wrap progress counts (DESIGN.md 6.4)
+
+Dependencies: None (design.md update is standalone)
+```
+
+### C-37: DesignDecisionsSeeding
+
+```
+Contract: DesignDecisionsSeeding
+Boundary: /gl:design orchestrator -> Filesystem (.greenlight/DECISIONS.md)
+Slice: S-13 (Documentation Infrastructure and Design Update)
+Design refs: FR-19.5, FR-28.1, FR-28.2, FR-28.4, FR-28.6, FR-28.7, TD-18
+
+COMMAND UPDATE: src/commands/gl/design.md
+
+Behaviour (after design approval):
+  1. Produce .greenlight/DECISIONS.md containing:
+     - Header with project name
+     - Decision log table with columns: #, Decision, Context, Chosen, Rejected, Date, Source
+     - All major technical decisions from the design session as initial entries
+  2. Decisions are numbered sequentially: D-1, D-2, D-3... (FR-28.6)
+  3. Source column for all initial entries is "design" (FR-28.3)
+  4. Commit DECISIONS.md as part of design commit
+
+Input (context for seeding):
+  - DESIGN.md technical decisions table (the seed data)
+  - Design session outputs (additional decisions made during design)
+
+Output:
+  - .greenlight/DECISIONS.md following schema in DESIGN.md section 4.6
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoDesignDecisions | Design session produced no explicit decisions | Create DECISIONS.md with header and empty table. Note: "No decisions recorded during design" |
+
+Invariants:
+  - DECISIONS.md is seeded from DESIGN.md technical decisions, not duplicated (FR-28.7, TD-18)
+  - DECISIONS.md is append-only after creation (NFR-11)
+  - Numbering is sequential across the entire file regardless of source (FR-28.6)
+  - Source values follow the schema: design, milestone, slice:{id}, quick, wrap:{boundary} (FR-28.3)
+  - Date is the date of the design session
+  - DECISIONS.md is created, never appended to, during initial /gl:design (fresh start)
+  - When invoked via /gl:roadmap milestone (FR-19.6), new decisions are appended to existing DECISIONS.md
+
+Security:
+  - No sensitive data in DECISIONS.md
+  - Security-related decisions may be recorded (e.g., "chose argon2 over bcrypt") but without exposing implementation details (DESIGN.md 6.4)
+
+Dependencies: None (design.md update is standalone)
+```
+
+### C-38: ManifestDocumentationUpdate
+
+```go
+// Contract: ManifestDocumentationUpdate
+// Boundary: Go CLI -> Manifest (2 new file paths for documentation commands)
+// Slice: S-13 (Documentation Infrastructure and Design Update)
+// Design refs: DESIGN.md 7.3, UD-10, UD-17
+//
+// FILE: internal/installer/installer.go
+//
+// Change: Add 2 new entries to Manifest slice (in addition to 4 brownfield entries from C-33)
+//
+// New entries (inserted in alphabetical order within commands/gl/ section):
+//   "commands/gl/changelog.md"    // NEW -- /gl:changelog command
+//   "commands/gl/roadmap.md"      // NEW -- /gl:roadmap command
+//
+// Updated Manifest (32 entries, up from 30 after brownfield, 26 original):
+//   "agents/gl-architect.md"
+//   "agents/gl-assessor.md"
+//   "agents/gl-codebase-mapper.md"
+//   "agents/gl-debugger.md"
+//   "agents/gl-designer.md"
+//   "agents/gl-implementer.md"
+//   "agents/gl-security.md"
+//   "agents/gl-test-writer.md"
+//   "agents/gl-verifier.md"
+//   "agents/gl-wrapper.md"
+//   "commands/gl/add-slice.md"
+//   "commands/gl/assess.md"
+//   "commands/gl/changelog.md"     <-- NEW
+//   "commands/gl/design.md"
+//   "commands/gl/help.md"
+//   "commands/gl/init.md"
+//   "commands/gl/map.md"
+//   "commands/gl/pause.md"
+//   "commands/gl/quick.md"
+//   "commands/gl/resume.md"
+//   "commands/gl/roadmap.md"       <-- NEW
+//   "commands/gl/settings.md"
+//   "commands/gl/ship.md"
+//   "commands/gl/slice.md"
+//   "commands/gl/status.md"
+//   "commands/gl/wrap.md"
+//   "references/checkpoint-protocol.md"
+//   "references/deviation-rules.md"
+//   "references/verification-patterns.md"
+//   "templates/config.md"
+//   "templates/state.md"
+//   "CLAUDE.md"
+//
+// Errors: none (compile-time constant)
+//
+// Invariants:
+// - CLAUDE.md remains the LAST entry
+// - Entries within commands/gl/ section are alphabetically ordered
+// - go:embed directive uses wildcards -- no main.go change needed
+// - Manifest count increases from 30 (post-brownfield) to 32
+// - All existing tests that validate manifest count must be updated to expect 32
+// - This change is additive to C-33 (brownfield manifest update). Both changes apply.
+//
+// Dependencies: C-33 (brownfield manifest update must be applied first or simultaneously)
+```
+
+### C-39: HelpInsightSection
+
+```
+Contract: HelpInsightSection
+Boundary: /gl:help command -> User (INSIGHT section and updated FLOW line)
+Slice: S-13 (Documentation Infrastructure and Design Update)
+Design refs: FR-17.3, FR-17.4, FR-17.5, DESIGN.md 5.5
+
+COMMAND UPDATE: src/commands/gl/help.md
+
+Output (updated help display additions):
+  - INSIGHT section inserted between MONITOR and SHIP sections (FR-17.3)
+  - Commands listed in INSIGHT:
+      /gl:roadmap           Product roadmap + milestones
+      /gl:changelog         Human-readable changelog from summaries
+    (FR-17.4)
+  - FLOW line updated to include documentation steps (FR-17.5):
+      map? -> assess? -> init -> design (ROADMAP, DECISIONS) -> wrap? ->
+      slice 1 (summary) -> ... -> ship -> roadmap milestone -> ...
+  - Three-views tagline added:
+      Three views: /gl:status (machine), /gl:roadmap (product), /gl:changelog (history)
+  - BUILD section /gl:slice description updated to include "-> summary" step:
+      /gl:slice <N>         TDD loop: test -> implement ->
+                            security -> verify -> commit -> summary
+
+Exact output (from DESIGN.md 5.5):
+  INSIGHT
+    /gl:roadmap           Product roadmap + milestones
+    /gl:changelog         Human-readable changelog from summaries
+
+Errors: None (help always succeeds)
+
+Invariants:
+  - INSIGHT section is always present in help output (not conditional)
+  - INSIGHT appears between MONITOR and SHIP sections (FR-17.3)
+  - FLOW line includes documentation steps: design (ROADMAP, DECISIONS), slice (summary) (FR-17.5)
+  - Three-views tagline is always present
+  - Does not remove or modify any existing help sections
+  - This change is additive to C-28 (BROWNFIELD section). Both changes apply.
+
+Dependencies: C-28 (brownfield help section must be applied first or simultaneously)
+```
+
+### C-40: StatusDocumentationReference
+
+```
+Contract: StatusDocumentationReference
+Boundary: /gl:status command -> User (roadmap and changelog reference line)
+Slice: S-13 (Documentation Infrastructure and Design Update)
+Design refs: FR-16.4, DESIGN.md 5.6
+
+COMMAND UPDATE: src/commands/gl/status.md
+
+Output (additional line at bottom of status display):
+  Product view: /gl:roadmap | History: /gl:changelog
+
+  Displayed unconditionally after the "Next:" recommendation.
+  Provides discoverability for the human-readable views.
+
+Errors: None (status always succeeds; this is a static line)
+
+Invariants:
+  - Reference line is always displayed, even if ROADMAP.md does not exist yet (FR-16.4)
+  - Line appears after the "Next:" recommendation, at the very bottom of status output
+  - Does not modify any existing status display content
+  - This change is additive to C-27 (brownfield status display). Both changes apply.
+
+Dependencies: C-27 (brownfield status display must be applied first or simultaneously)
+```
+
+---
+
+## S-14: Auto-Summaries and Decision Aggregation
+
+*User Action: "User can see what was built and why after each slice, wrap, or quick task"*
+
+### C-41: SliceSummaryGeneration
+
+```
+Contract: SliceSummaryGeneration
+Boundary: /gl:slice orchestrator -> Summary Task -> Filesystem
+Slice: S-14 (Auto-Summaries and Decision Aggregation)
+Design refs: FR-15.7, FR-15.10, FR-25.1, FR-25.2, FR-25.3, FR-25.4, FR-25.5, FR-25.6, FR-25.7, FR-29.3, FR-29.4, FR-29.5, TD-16, NFR-9, NFR-12
+
+COMMAND UPDATE: src/commands/gl/slice.md
+
+Behaviour (added after verification succeeds in existing /gl:slice pipeline):
+  1. Collect structured data from the completed slice:
+     - Slice ID, slice name, milestone (if any)
+     - Contracts satisfied (names from GRAPH.json)
+     - Test count and pass/fail results
+     - Key files changed (from git diff --stat)
+     - Deviation log entries (if any)
+     - Security results summary
+     - Decision notes from each agent's output (see C-44)
+  2. Spawn a Task with fresh context (TD-16, NFR-9)
+  3. Pass structured data to the Task via XML context blocks
+  4. Task writes .greenlight/summaries/{slice-id}-SUMMARY.md (FR-25.1)
+  5. Task checks if architecture changed: new service, new external integration,
+     new database table, new endpoint group (FR-29.3)
+  6. If architecture changed, Task updates Architecture Diagram section in ROADMAP.md (FR-29.4)
+  7. If architecture did NOT change, diagram is NOT modified (FR-29.5)
+  8. After Task completes, orchestrator updates ROADMAP.md:
+     mark slice as complete, add completion date, test count, key decision (FR-25.7)
+
+Input (structured data passed to Task):
+  - slice_id: string
+  - slice_name: string
+  - milestone: string (optional)
+  - contracts_satisfied: string[] (contract names)
+  - test_count: number
+  - test_results: "all passing" | "{N} failing"
+  - key_files: string[] (from git diff --stat)
+  - deviations: string[] (deviation log entries, or empty)
+  - security_summary: string (security scan results)
+  - decisions: { decision: string, chosen: string, context: string }[] (from agents)
+  - architecture_context: string (current Mermaid diagram from ROADMAP.md)
+
+Output:
+  - .greenlight/summaries/{slice-id}-SUMMARY.md (following schema in DESIGN.md 4.7)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | TaskSpawnFailure | Task cannot be spawned | Slice is still considered complete. Warn user: "Summary generation failed. Run /gl:changelog to check for gaps." (NFR-12) |
+  | TaskWriteFailure | Task fails to write summary file | Same as above. Warn user. Do not retry (NFR-12) |
+  | RoadmapUpdateFailure | ROADMAP.md update fails (file missing or write error) | Warn user. Slice is still considered complete. Summary file may exist without roadmap update |
+  | ArchitectureDiagramFailure | Task cannot determine if architecture changed | Do not modify diagram. Warn user. Slice is still complete |
+  | NoSummariesDir | .greenlight/summaries/ directory does not exist | Create directory with 0o755 permissions before writing |
+
+Invariants:
+  - Summary generation is mandatory -- every completed slice triggers it (FR-25.5)
+  - Summary failure does NOT block the TDD pipeline (NFR-12)
+  - Summary is written in product language, not implementation language (FR-25.4)
+  - Summary is NOT over-templated -- Task writes natural-language informed by structured data (FR-25.6)
+  - Task receives structured data, it does NOT discover data by reading files (NFR-9)
+  - Task MUST complete within a single invocation (NFR-9)
+  - Architecture diagram is only updated if architecture actually changed (FR-29.4, FR-29.5)
+  - Architecture diagram remains text-based Mermaid (FR-29.6, TD-19)
+  - ROADMAP.md is updated after summary is written (FR-25.7)
+  - Summary file naming: .greenlight/summaries/{slice-id}-SUMMARY.md (DESIGN.md 4.7)
+
+Security:
+  - Summaries include security results summary, not full details (DESIGN.md 6.4)
+  - No sensitive data (credentials, API keys, PII) appears in summaries
+
+Dependencies: C-36 (ROADMAP.md must exist for update; created by /gl:design)
+```
+
+### C-42: WrapSummaryGeneration
+
+```
+Contract: WrapSummaryGeneration
+Boundary: /gl:wrap orchestrator -> Summary Task -> Filesystem
+Slice: S-14 (Auto-Summaries and Decision Aggregation)
+Design refs: FR-14.4, FR-14.5, FR-26.1, FR-26.2, FR-26.3, FR-26.4, TD-14, TD-16, NFR-9, NFR-12
+
+COMMAND UPDATE: src/commands/gl/wrap.md
+
+Behaviour (added after successful wrap commit in existing /gl:wrap pipeline):
+  1. Collect structured data from the completed wrap:
+     - Boundary name
+     - Contracts extracted (count and names)
+     - Locking tests written (count)
+     - Known security issues (count and severities)
+     - Files covered (file paths in the boundary)
+  2. Spawn a Task with fresh context (TD-16, NFR-9)
+  3. Task writes .greenlight/summaries/{boundary-name}-wrap-SUMMARY.md (FR-26.1)
+  4. After Task completes, orchestrator updates ROADMAP.md wrap progress
+     section if ROADMAP.md exists (FR-14.5)
+
+Input (structured data passed to Task):
+  - boundary_name: string
+  - contracts_extracted: { name: string, boundary: string }[]
+  - contracts_count: number
+  - locking_tests_count: number
+  - security_issues: { count: number, severities: string }
+  - files_covered: string[] (file paths)
+
+Output:
+  - .greenlight/summaries/{boundary-name}-wrap-SUMMARY.md
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | TaskSpawnFailure | Task cannot be spawned | Wrap is still considered complete. Warn user (NFR-12) |
+  | TaskWriteFailure | Task fails to write summary file | Warn user. Wrap is still complete (NFR-12) |
+  | RoadmapMissing | ROADMAP.md does not exist for wrap progress update | Skip roadmap update. No error |
+  | NoSummariesDir | .greenlight/summaries/ does not exist | Create directory before writing |
+
+Invariants:
+  - Wrap summary is mandatory -- every completed wrap triggers it (TD-14)
+  - Summary failure does NOT block wrap completion (NFR-12)
+  - Summary is in product language (FR-26.3): "Locked the authentication boundary..."
+  - Wrap summaries appear in /gl:changelog output alongside slice summaries (FR-26.4)
+  - Task receives structured data, does NOT discover by reading files (NFR-9)
+  - Summary file naming: .greenlight/summaries/{boundary-name}-wrap-SUMMARY.md (DESIGN.md 4.7)
+  - ROADMAP.md wrap progress update is best-effort (skip if ROADMAP.md missing)
+
+Security:
+  - Security issues referenced by count and severity only, not full details
+  - No sensitive data in wrap summaries
+
+Dependencies: C-36 (ROADMAP.md for wrap progress update; optional, skip if missing)
+```
+
+### C-43: QuickSummaryGeneration
+
+```
+Contract: QuickSummaryGeneration
+Boundary: /gl:quick orchestrator -> Summary Task -> Filesystem
+Slice: S-14 (Auto-Summaries and Decision Aggregation)
+Design refs: FR-27.1, FR-27.2, FR-27.3, FR-27.4, TD-16, NFR-9, NFR-12
+
+COMMAND UPDATE: src/commands/gl/quick.md
+
+Behaviour (added after /gl:quick completes):
+  1. Collect structured data from the completed quick task:
+     - Timestamp (ISO 8601)
+     - Task description (what was done)
+     - Test count and results
+     - Key files changed (from git diff --stat)
+     - Whether a decision was involved
+     - Associated milestone (via user confirmation, if applicable)
+  2. Spawn a Task with fresh context (TD-16, NFR-9)
+  3. Task writes .greenlight/summaries/quick-{timestamp}-SUMMARY.md (FR-27.1)
+  4. If the quick task involved a decision, append to DECISIONS.md (FR-27.3)
+  5. If the quick task is associated with a milestone, update ROADMAP.md (FR-27.4)
+
+Input (structured data passed to Task):
+  - timestamp: string (ISO 8601, used in filename)
+  - description: string (what was done)
+  - test_count: number
+  - test_results: string
+  - key_files: string[] (from git diff --stat)
+  - decision: { decision: string, chosen: string, context: string } | null
+
+Output:
+  - .greenlight/summaries/quick-{timestamp}-SUMMARY.md
+  - .greenlight/DECISIONS.md (appended, if decision was made)
+  - .greenlight/ROADMAP.md (updated, if associated with milestone)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | TaskSpawnFailure | Task cannot be spawned | Quick is still considered complete. Warn user (NFR-12) |
+  | DecisionAppendFailure | Cannot append to DECISIONS.md | Warn user. Decision is lost. Quick is still complete |
+  | NoDecisionsFile | DECISIONS.md does not exist | Create DECISIONS.md with header and the decision entry |
+  | NoSummariesDir | .greenlight/summaries/ does not exist | Create directory before writing |
+
+Invariants:
+  - Quick summaries follow the same format as slice summaries but are more concise (FR-27.2)
+  - Summary failure does NOT block quick task completion (NFR-12)
+  - Decision appending follows the same rules as slice decisions: sequential numbering, source="quick" (FR-28.3)
+  - DECISIONS.md is append-only (NFR-11)
+  - Milestone association is optional and confirmed by user (FR-27.4)
+  - Summary file naming: .greenlight/summaries/quick-{timestamp}-SUMMARY.md (DESIGN.md 4.7)
+  - Timestamp format in filename: ISO 8601 date-time with hyphens replacing colons
+
+Security:
+  - No sensitive data in quick summaries
+  - Decision entries do not expose security implementation details
+
+Dependencies: C-37 (DECISIONS.md schema; optional, created if missing)
+```
+
+### C-44: DecisionAggregation
+
+```
+Contract: DecisionAggregation
+Boundary: /gl:slice orchestrator -> Filesystem (.greenlight/DECISIONS.md)
+Slice: S-14 (Auto-Summaries and Decision Aggregation)
+Design refs: FR-15.9, FR-28.5, FR-28.6, TD-17, NFR-11
+
+COMMAND UPDATE: src/commands/gl/slice.md
+
+Behaviour (added after verification succeeds in existing /gl:slice pipeline):
+  1. Collect decision notes from each agent's output during the slice:
+     - Test writer: decisions about test patterns, fixtures, strategies
+     - Implementer: decisions about algorithms, libraries, patterns
+     - Security: decisions about security approaches
+     - Verifier: observations about notable design choices
+  2. Filter for meaningful decisions (not every implementation choice is a decision)
+  3. Format each decision as a DECISIONS.md table row:
+     - # : next sequential number (D-{N})
+     - Decision: what was decided
+     - Context: why this decision was needed
+     - Chosen: what was chosen
+     - Rejected: what was considered and rejected (or "-")
+     - Date: date of slice completion
+     - Source: "slice:{slice-id}" (FR-28.3)
+  4. Append to .greenlight/DECISIONS.md
+
+Input:
+  - Agent outputs containing decision notes
+  - Current DECISIONS.md (to determine next sequential number)
+  - Slice ID (for source column)
+
+Output:
+  - .greenlight/DECISIONS.md (appended with new decision entries)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoDecisionsFile | DECISIONS.md does not exist | Create DECISIONS.md with header and the decision entries |
+  | NoDecisions | Agents produced no meaningful decisions | Do not append. No error |
+  | NumberingConflict | Cannot determine next sequential number | Read DECISIONS.md, find highest D-{N}, increment |
+
+Invariants:
+  - DECISIONS.md is append-only (NFR-11) -- orchestrator never modifies existing entries
+  - Decision numbering is sequential across the entire file (FR-28.6)
+  - Source format for slices: "slice:{slice-id}" (FR-28.3)
+  - Each agent notes decisions in its output; orchestrator aggregates (TD-17)
+  - Decision aggregation failure does NOT block slice completion
+  - Not every implementation choice is a decision -- filter for meaningful architectural
+    or pattern choices that a future reader would want to know about
+  - Decisions are captured while agent context is fresh (TD-17)
+
+Security:
+  - Security-related decisions are recorded without exposing implementation details
+  - No sensitive data in decision entries
+
+Dependencies: C-37 (DECISIONS.md schema; optional, created if missing)
+```
+
+### C-45: RoadmapAutoUpdate
+
+```
+Contract: RoadmapAutoUpdate
+Boundary: Orchestrators (slice/wrap) -> Filesystem (.greenlight/ROADMAP.md)
+Slice: S-14 (Auto-Summaries and Decision Aggregation)
+Design refs: FR-15.8, FR-14.5, FR-23.5, FR-25.7
+
+COMMAND UPDATES: src/commands/gl/slice.md, src/commands/gl/wrap.md
+
+Behaviour for /gl:slice (after summary generation):
+  1. Read ROADMAP.md
+  2. Find the slice row in the current milestone's slice table
+  3. Update the row:
+     - Status: "complete"
+     - Tests: {N} (test count from verification)
+     - Completed: {YYYY-MM-DD}
+     - Key Decision: {brief summary of most significant decision, or "-"}
+  4. Write updated ROADMAP.md
+
+Behaviour for /gl:wrap (after wrap summary generation):
+  1. Read ROADMAP.md (if it exists)
+  2. Find or create the Wrap Progress section
+  3. Add or update the wrapped boundary row:
+     - Boundary: {name}
+     - Status: wrapped
+     - Locking Tests: {N}
+     - Known Issues: {N}
+  4. Write updated ROADMAP.md
+
+Input:
+  - .greenlight/ROADMAP.md (current state)
+  - Slice completion data (for slice updates): slice ID, test count, completion date, key decision
+  - Wrap completion data (for wrap updates): boundary name, locking test count, known issue count
+
+Output:
+  - .greenlight/ROADMAP.md (updated in place)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoRoadmap | ROADMAP.md does not exist | Skip update. Warn user: "ROADMAP.md not found. Run /gl:design to create it." |
+  | SliceNotFound | Slice ID not found in any milestone table | Append slice to the active milestone table |
+  | ParseFailure | Cannot parse ROADMAP.md structure | Skip update. Warn user. Do not corrupt existing file |
+
+Invariants:
+  - ROADMAP.md updates are best-effort -- failure does not block slice or wrap completion
+  - Slice rows are updated in place (matched by slice ID), not appended as duplicates
+  - Wrap progress rows are updated in place (matched by boundary name)
+  - ROADMAP.md structure is preserved during updates (no sections removed or reordered)
+  - Updates happen after summary generation, as the final documentation step
+  - When ROADMAP.md does not exist, no roadmap update occurs (no error, just a warning)
+
+Security:
+  - ROADMAP.md does not include security details, only known issue counts
+  - No sensitive data written to ROADMAP.md
+
+Dependencies: C-36 (ROADMAP.md created by /gl:design; optional for wrap updates)
+```
+
+---
+
+## S-15: Roadmap Command (/gl:roadmap)
+
+*User Action: "User can view product roadmap and plan new milestones"*
+
+### C-46: RoadmapDisplay
+
+```
+Contract: RoadmapDisplay
+Boundary: User -> /gl:roadmap command (read-only display)
+Slice: S-15 (Roadmap Command)
+Design refs: FR-24.1, FR-24.8, NFR-10
+
+COMMAND DEFINITION: src/commands/gl/roadmap.md
+
+Input:
+  - User invokes /gl:roadmap (no arguments)
+  - .greenlight/ROADMAP.md must exist
+
+Output:
+  - Display the contents of ROADMAP.md to the user
+  - No files modified (read-only) (NFR-10)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoRoadmap | .greenlight/ROADMAP.md does not exist | Print "No roadmap found. Run /gl:design to create one." and stop |
+  | EmptyRoadmap | ROADMAP.md exists but is empty | Print "ROADMAP.md is empty. Run /gl:design to populate it." and stop |
+
+Invariants:
+  - /gl:roadmap (no arguments) is strictly read-only (NFR-10)
+  - No files are created, modified, or deleted
+  - Displays the full contents of ROADMAP.md including architecture diagram, milestone tables, and archived milestones
+  - config.json is read for project context (FR-24.8)
+
+Security:
+  - Read-only operation, no risk of data modification
+
+Dependencies: C-36 (ROADMAP.md must exist; created by /gl:design)
+```
+
+### C-47: RoadmapMilestonePlanning
+
+```
+Contract: RoadmapMilestonePlanning
+Boundary: User -> /gl:roadmap milestone -> gl-designer (scoped design session)
+Slice: S-15 (Roadmap Command)
+Design refs: FR-19.6, FR-24.2, FR-24.3, FR-24.4, FR-24.5, FR-24.8, TD-13, TD-21
+
+COMMAND DEFINITION: src/commands/gl/roadmap.md (milestone sub-command)
+
+Input:
+  - User invokes /gl:roadmap milestone
+  - .greenlight/ROADMAP.md must exist
+  - .greenlight/config.json must exist
+
+Orchestration steps:
+  1. Read .greenlight/config.json for project context and model resolution (FR-24.8)
+  2. Read .greenlight/ROADMAP.md (current milestones, architecture) (FR-24.3)
+  3. Read .greenlight/DESIGN.md (existing design context) (FR-24.3)
+  4. Read .greenlight/CONTRACTS.md (existing contracts)
+  5. Read .greenlight/STATE.md (wrapped boundaries, slice status)
+  6. Display current milestone status to user
+  7. Resolve gl-designer model from config.json profiles
+  8. Spawn gl-designer via Task with milestone scope (TD-13):
+     - Receives: ROADMAP.md, DESIGN.md, CONTRACTS.md, STATE.md
+     - Skips: init interview, stack decisions (FR-24.4)
+     - Runs: lighter design session (goal, user actions, constraints)
+     - Produces: new slices with milestone field (TD-21)
+  9. Append new milestone section to ROADMAP.md (FR-24.5)
+  10. Append new slices to GRAPH.json with milestone field (FR-24.5, TD-21)
+  11. Append design decisions to DECISIONS.md (FR-24.5)
+  12. Commit with message: "docs: plan milestone {milestone-name}"
+
+Output:
+  - .greenlight/ROADMAP.md (new milestone section appended)
+  - .greenlight/GRAPH.json (new slices appended with milestone field)
+  - .greenlight/DECISIONS.md (new design decisions appended)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoRoadmap | ROADMAP.md does not exist | Print "No roadmap found. Run /gl:design first." and stop |
+  | NoConfig | config.json does not exist | Print "No config found. Run /gl:init first." and stop |
+  | DesignerFailure | gl-designer agent fails to produce output | Report error to user. Do not commit. Suggest retrying |
+  | NoDesignMd | DESIGN.md does not exist | Print "No design found. Run /gl:design first." and stop |
+
+Invariants:
+  - Milestone planning spawns gl-designer with milestone scope (TD-13)
+  - Designer session is lighter: no init interview, no stack decisions (FR-24.4)
+  - New slices include milestone field matching the new milestone name (TD-21)
+  - New slices are appended to GRAPH.json, not replacing existing slices
+  - Existing milestones in ROADMAP.md are preserved (NFR-10)
+  - Decisions are appended to DECISIONS.md with source="milestone" (FR-28.3)
+  - DECISIONS.md is append-only (NFR-11)
+  - A slice belongs to at most one milestone (TD-21)
+  - Commit format: "docs: plan milestone {milestone-name}"
+
+Security:
+  - No sensitive data in milestone planning
+  - Same security constraints as /gl:design
+
+Dependencies: C-36 (ROADMAP.md must exist), C-37 (DECISIONS.md must exist)
+```
+
+### C-48: RoadmapMilestoneArchive
+
+```
+Contract: RoadmapMilestoneArchive
+Boundary: User -> /gl:roadmap archive -> Filesystem (.greenlight/ROADMAP.md)
+Slice: S-15 (Roadmap Command)
+Design refs: FR-24.6, FR-24.7
+
+COMMAND DEFINITION: src/commands/gl/roadmap.md (archive sub-command)
+
+Input:
+  - User invokes /gl:roadmap archive
+  - .greenlight/ROADMAP.md must exist with at least one completed milestone
+
+Orchestration steps:
+  1. Read .greenlight/ROADMAP.md
+  2. Identify completed milestones (all slices in status=complete)
+  3. Present completed milestones to user for selection
+  4. User picks milestone to archive
+  5. Compress the milestone:
+     - Move from active section to Archived Milestones section
+     - Format: "{milestone-name} -- completed {date}"
+     - Summary: "{N} slices, {N} tests. {one-line summary of what was achieved.}" (FR-24.7)
+  6. Write updated ROADMAP.md
+  7. Commit with message: "docs: archive milestone {milestone-name}"
+
+Output:
+  - .greenlight/ROADMAP.md (milestone moved to Archived section, compressed)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoRoadmap | ROADMAP.md does not exist | Print "No roadmap found. Run /gl:design first." and stop |
+  | NoCompletedMilestones | No milestones have all slices complete | Print "No completed milestones available for archiving." and stop |
+  | ArchiveFailure | Cannot parse or update ROADMAP.md | Report error. Do not corrupt file. Suggest manual archiving |
+
+Invariants:
+  - Only completed milestones (all slices done) can be archived
+  - Archived milestones are compressed: name, completion date, slice count, test count, one-line summary (FR-24.7)
+  - Active and planning milestones are never archived
+  - Archiving is a one-way operation (archived milestones are not restored)
+  - Archived Milestones section is at the bottom of ROADMAP.md
+  - Commit format: "docs: archive milestone {milestone-name}"
+
+Security:
+  - No sensitive data involved in archiving
+
+Dependencies: C-36 (ROADMAP.md must exist)
+```
+
+---
+
+## S-16: Changelog Command (/gl:changelog)
+
+*User Action: "User can see a human-readable changelog of everything that was built"*
+
+### C-49: ChangelogDisplay
+
+```
+Contract: ChangelogDisplay
+Boundary: User -> /gl:changelog command (read-only display)
+Slice: S-16 (Changelog Command)
+Design refs: FR-30.1, FR-30.4, FR-30.5, FR-30.6, FR-30.7, TD-20
+
+COMMAND DEFINITION: src/commands/gl/changelog.md
+
+Input:
+  - User invokes /gl:changelog (no arguments)
+  - .greenlight/summaries/ directory must exist with at least one summary file
+  - .greenlight/config.json for project context (FR-30.7)
+
+Output:
+  - Display a formatted changelog to the user (read-only, no files written) (FR-30.6)
+  - Format (from DESIGN.md 5.4):
+      CHANGELOG -- {project name}
+
+      {date}  {type}:{name}     {one-line summary}    {N} tests
+      {date}  {type}:{name}     {one-line summary}    {N} tests
+
+      {N} entries ({N} slices, {N} wraps, {N} quick)
+
+Behaviour:
+  1. Read .greenlight/config.json for project name
+  2. Scan .greenlight/summaries/ directory for all summary files
+  3. Parse each summary file to extract: date, type (slice/wrap/quick), name, one-line summary, test count
+  4. Sort chronologically, newest first (FR-30.4)
+  5. Format and display
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoSummariesDir | .greenlight/summaries/ does not exist | Print "No summaries found. Summaries are generated after each /gl:slice, /gl:wrap, or /gl:quick." and stop |
+  | EmptySummariesDir | summaries/ exists but contains no summary files | Print "No summaries found yet. Complete a slice, wrap, or quick task to generate summaries." and stop |
+  | NoConfig | config.json does not exist | Use "Unknown Project" as project name. Continue |
+  | MalformedSummary | A summary file cannot be parsed | Skip that entry. Warn user: "Could not parse {filename}" |
+
+Invariants:
+  - /gl:changelog is strictly read-only -- no files are written (FR-30.6, TD-20)
+  - Changelog is formatted chronologically, newest first (FR-30.4)
+  - Each entry includes: date, type:name, one-line summary, test count (FR-30.5)
+  - Type values: "slice", "wrap", "quick"
+  - Summary files are identified by naming convention:
+    {slice-id}-SUMMARY.md, {boundary}-wrap-SUMMARY.md, quick-{timestamp}-SUMMARY.md
+  - Changelog reads from summaries/ directory only (TD-20)
+  - Unparseable summary files are skipped, not fatal
+  - Entry count summary is always displayed at the bottom
+
+Security:
+  - Read-only operation, no risk of data modification
+  - No sensitive data exposed in changelog output
+
+Dependencies: None (command can be built and tested independently; reads from summaries/ directory)
+```
+
+### C-50: ChangelogFiltering
+
+```
+Contract: ChangelogFiltering
+Boundary: /gl:changelog command -> Summary filtering (milestone and date filters)
+Slice: S-16 (Changelog Command)
+Design refs: FR-30.2, FR-30.3
+
+COMMAND DEFINITION: src/commands/gl/changelog.md (milestone and since sub-commands)
+
+Input (milestone filter):
+  - User invokes /gl:changelog milestone {name}
+  - {name} is a milestone name matching the milestone field in GRAPH.json slices
+
+Input (date filter):
+  - User invokes /gl:changelog since {DATE}
+  - {DATE} is an ISO 8601 date (YYYY-MM-DD)
+
+Behaviour for milestone filter:
+  1. Read GRAPH.json to find all slices with milestone={name}
+  2. Filter summaries to include only those matching the milestone's slice IDs
+  3. Include wrap summaries if the wrap boundary is associated with the milestone
+  4. Display filtered changelog with header: "CHANGELOG -- {milestone-name}"
+
+Behaviour for date filter:
+  1. Parse {DATE} as ISO 8601 date
+  2. Filter summaries to include only those with completion date >= {DATE}
+  3. Display filtered changelog with header: "CHANGELOG -- since {DATE}"
+
+Output:
+  - Filtered changelog display (same format as unfiltered, but with subset of entries)
+  - No files written (read-only)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | UnknownMilestone | Milestone name not found in GRAPH.json | Print "Milestone '{name}' not found in GRAPH.json." and stop |
+  | InvalidDate | Date argument is not valid ISO 8601 | Print "Invalid date format: {DATE}. Use YYYY-MM-DD." and stop |
+  | NoMatchingEntries | Filter matches zero summaries | Print "No changelog entries found for {filter}." and stop |
+  | NoGraphJson | GRAPH.json not found (milestone filter only) | Print "No GRAPH.json found. Cannot filter by milestone." and stop |
+
+Invariants:
+  - Filtered changelog uses the same display format as unfiltered (FR-30.4, FR-30.5)
+  - Milestone filter matches by slice ID, not by text search
+  - Date filter uses >= comparison (inclusive of the given date)
+  - Both filters are read-only -- no files written (FR-30.6)
+  - Date parsing accepts YYYY-MM-DD format only
+  - Milestone names are case-sensitive, matching GRAPH.json exactly
+
+Security:
+  - Read-only operation
+  - No sensitive data exposed
+
+Dependencies: C-49 (changelog display base; same command file, different sub-command)
+```
+
+---
+
+## Cross-Cutting: Summary Task Specification
+
+```
+Contract: SummaryTaskSpecification
+Boundary: Orchestrators (slice/wrap/quick) -> Task (summary generation)
+Not a separate slice -- referenced by S-14 (C-41, C-42, C-43)
+Design refs: FR-25.2, FR-25.3, FR-25.4, FR-25.6, TD-16, NFR-9, NFR-12
+
+TASK SPECIFICATION (not a separate agent definition):
+
+The summary Task is a fresh-context Task invocation that receives structured data and
+writes a markdown file. It is spawned by the orchestrator, not by a user command.
+
+Input (XML context blocks passed to Task):
+  <summary_context>
+    <type>{slice|wrap|quick}</type>
+    <id>{slice-id or boundary-name or timestamp}</id>
+    <name>{human-readable name}</name>
+    <milestone>{milestone name, if any}</milestone>
+    <date>{YYYY-MM-DD}</date>
+  </summary_context>
+
+  <results>
+    <contracts>{list of contracts satisfied}</contracts>
+    <tests>{count and pass/fail}</tests>
+    <files>{git diff --stat output}</files>
+    <deviations>{deviation log entries}</deviations>
+    <security>{security scan summary}</security>
+    <decisions>{decision notes from agents}</decisions>
+  </results>
+
+  <architecture_context>
+    {current Mermaid diagram from ROADMAP.md, for architecture change detection}
+  </architecture_context>
+
+Output:
+  - One markdown file in .greenlight/summaries/ following naming convention
+  - Updated ROADMAP.md architecture diagram if architecture changed
+
+Task behaviour:
+  - Write a natural-language summary in product language (FR-25.4)
+  - Summary is NOT over-templated -- natural language informed by structured data (FR-25.6)
+  - Follow the summary schema in DESIGN.md section 4.7
+  - For slices: check if architecture changed and update ROADMAP.md diagram if yes
+  - For wraps: describe what was locked in product language (FR-26.3)
+  - For quick: more concise than slice summaries (FR-27.2)
+  - Complete within a single Task invocation (NFR-9)
+
+Invariants:
+  - Task receives ALL data it needs via context blocks -- it does NOT read files to discover data (NFR-9)
+  - Task is spawned with fresh context to avoid quality degradation (TD-16)
+  - Task failure does NOT block the parent pipeline (NFR-12)
+  - No sensitive data in summaries (DESIGN.md 6.4)
+  - This is NOT a separate agent definition -- it is a Task call within existing orchestrators
+```
+
+---
+
+## Cross-Cutting: GRAPH.json milestone Field
+
+```
+Contract: GraphJsonMilestoneField
+Boundary: GRAPH.json -> Slice objects (optional milestone field)
+Not a separate slice -- referenced by S-13 (design produces it), S-15 (roadmap milestone adds it)
+Design refs: TD-21, DESIGN.md 4.4
+
+FIELD SPECIFICATION:
+
+  "milestone": "{milestone-name}"   // optional string field on slice objects
+
+Rules:
+  - Optional field on slice objects in GRAPH.json
+  - String type matching a milestone name in ROADMAP.md
+  - When not specified, slice belongs to the initial/default milestone (from first /gl:design)
+  - A slice belongs to at most one milestone
+  - Created by /gl:roadmap milestone when spawning a scoped design session
+  - Used by /gl:changelog milestone {name} to filter summaries
+  - Does NOT affect dependency resolution or wave ordering
+
+Invariants:
+  - Field is optional -- all existing slices work without it
+  - No impact on build order or dependency graph
+  - Milestone names are simple strings, not structured objects
+```
+
+---
+
+## Updated User Action Mapping
 
 | User Action | Slice(s) | Contracts | Enabled By |
 |-------------|----------|-----------|------------|
@@ -1680,3 +2630,7 @@ Invariants:
 | 2. User can wrap existing code in contracts and locking tests without rewriting it | S-09 | C-21, C-22, C-23, C-24, C-25, C-26 | /gl:wrap command + gl-wrapper agent |
 | 3. User can see brownfield progress alongside greenfield slices | S-10 | C-27, C-28, C-29 | /gl:status, /gl:help, /gl:settings updates |
 | 4. User can refactor a wrapped boundary through the normal TDD loop | S-11 | C-30, C-31, C-32 | /gl:slice wraps field + architect/test-writer updates |
+| 5. User can start a project with a product roadmap and decision log from day one | S-13 | C-36, C-37, C-38, C-39, C-40 | /gl:design update + infrastructure |
+| 6. User can see what was built and why after each slice, wrap, or quick task | S-14 | C-41, C-42, C-43, C-44, C-45 | Auto-summaries + decision aggregation |
+| 7. User can view product roadmap and plan new milestones | S-15 | C-46, C-47, C-48 | /gl:roadmap command |
+| 8. User can see a human-readable changelog of everything that was built | S-16 | C-49, C-50 | /gl:changelog command |

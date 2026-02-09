@@ -57,6 +57,8 @@ Parse STATE.md to check for wrapped boundaries. Count:
 │  Last commit: {hash} {msg} ({time ago})                   │
 │  Uncommitted: {Y/N}                                       │
 │  Mode: {interactive/yolo}                                 │
+│                                                           │
+│  Product view: /gl:roadmap | History: /gl:changelog       │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -89,6 +91,8 @@ Parse STATE.md to check for wrapped boundaries. Count:
 │  Last commit: {hash} {msg} ({time ago})                   │
 │  Uncommitted: {Y/N}                                       │
 │  Mode: {interactive/yolo}                                 │
+│                                                           │
+│  Product view: /gl:roadmap | History: /gl:changelog       │
 └───────────────────────────────────────────────────────────┘
 ```
 

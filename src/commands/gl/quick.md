@@ -103,3 +103,43 @@ After completion, log in `.greenlight/QUICK.md` (create if doesn't exist):
 ```
 
 Update STATE.md test summary with new test counts.
+
+## Quick Summary Generation (C-43)
+
+After quick task completes, generate a summary (non-blocking):
+
+### Summary Generation
+
+Spawn a Task with fresh context to write the quick summary:
+
+```
+Task(prompt="
+Collect and document the following information for quick task:
+
+<quick_data>
+Type: {bug_fix | small_feature | config | refactor}
+Description: {user's description}
+timestamp: {ISO8601 timestamp of completion}
+Tests added: {N}
+Files modified: {list}
+Commit: {commit_hash}
+Decision made: {yes/no}
+</quick_data>
+
+Write a summary to `.greenlight/summaries/quick-{timestamp}-SUMMARY.md`.
+
+Summary failure does not block quick task completion.
+", subagent_type="gl-summarizer", model="{resolved_model.summarizer}", description="Generate quick task summary")
+```
+
+If Task fails, log warning and continue. Summary generation is non-blocking.
+
+### DECISIONS.md Append
+
+If a decision was made during the quick task:
+
+1. Format as DECISIONS.md table row
+2. append to DECISIONS.md (create with header if doesn't exist)
+3. Source format: `quick:{timestamp}`
+
+Decision append is non-blocking. If it fails, log warning and continue.

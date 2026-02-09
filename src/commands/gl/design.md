@@ -91,18 +91,42 @@ Run the full design session:
 5. Write .greenlight/DESIGN.md
 6. Get user approval
 
+After user approval, produce documentation outputs:
+7. Write .greenlight/ROADMAP.md with:
+   - Mermaid architecture diagram showing system components and their relationships
+   - Milestone table linking slices to product milestones
+   - Product roadmap tracking major features and releases
+8. Write .greenlight/DECISIONS.md seeded with technical decisions from the design session:
+   - Decision log table structure (Date, Decision, Rationale, Status)
+   - Key architectural decisions made during design
+   - Framework and technology choices with justification
+
 Do NOT produce contracts or dependency graphs. That's the architect's job.
 ", subagent_type="gl-designer", model="{resolved_model.designer}", description="System design session")
 ```
 
 ## After Design
 
-When the designer returns with an approved DESIGN.md, report:
+When the designer returns with an approved DESIGN.md, verify that documentation outputs exist:
+
+```bash
+cat .greenlight/ROADMAP.md 2>/dev/null
+cat .greenlight/DECISIONS.md 2>/dev/null
+```
+
+If either file is missing, the designer did not complete all required outputs. Report the issue.
+
+If both files exist, report:
 
 ```
 Design session complete.
 
 {summary from designer}
+
+Produced:
+- DESIGN.md (system design and architecture)
+- ROADMAP.md (product roadmap with Mermaid diagram and milestones)
+- DECISIONS.md (technical decision log seeded from design session)
 
 Next step: Run /gl:init to generate contracts from this design.
 The architect will read DESIGN.md and produce typed contracts

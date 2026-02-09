@@ -568,7 +568,71 @@ Locking-to-integration transition complete:
 
 ---
 
-## Step 7: Visual Checkpoint (if applicable)
+## Step 7: Generate Summary and Update Documentation
+
+After verification passes, generate a summary and update project documentation.
+
+### 7a: Summary Generation (C-41)
+
+Spawn a Task with fresh context to write the slice summary:
+
+```
+Task(prompt="
+Collect and document the following information for slice {slice_id}:
+
+<slice_data>
+ID: {slice_id}
+Name: {slice_name}
+Description: {what user can do after this}
+Contracts satisfied: {list}
+Test count: {N}
+Security test count: {M}
+Files created/modified: {list}
+Verification status: PASS
+</slice_data>
+
+Write a summary to `.greenlight/summaries/{slice-id}-SUMMARY.md` in product language (not implementation language).
+
+Check if architecture changed (new boundaries, integrations, or patterns). If so, note this in the summary.
+
+Summary failure does not block the pipeline.
+", subagent_type="gl-summarizer", model="{resolved_model.summarizer}", description="Generate summary for slice {slice_id}")
+```
+
+If Task fails, log warning and continue. Summary generation is non-blocking.
+
+### 7b: Decision Aggregation (C-44)
+
+After verification, aggregate decision notes from all agents:
+
+1. Collect decision notes from test writer, implementer, security, and verifier outputs
+2. Filter for meaningful decisions (architectural choices, tradeoffs, security decisions)
+3. Format as DECISIONS.md table rows:
+   - Columns: #, Decision, Context, Chosen, Rejected, Date, Source
+   - Source format: `slice:{slice-id}`
+4. append to DECISIONS.md (append-only, never modify existing rows)
+
+If DECISIONS.md doesn't exist, create it with header row.
+
+Decision aggregation failure does not block the slice.
+
+### 7c: ROADMAP.md Update (C-45)
+
+If ROADMAP.md exists:
+
+1. Read ROADMAP.md
+2. Find the slice row (search for slice ID)
+3. Update: Status=complete, Tests={N}, Completed={today's date}, Key Decision={if any}
+4. If slice row not found, log warning and skip (don't block)
+
+If architecture changed (noted in summary):
+- Update ROADMAP.md diagram if needed
+
+If ROADMAP.md doesn't exist, skip with warning.
+
+---
+
+## Step 9: Visual Checkpoint (if applicable)
 
 **Skip if `config.workflow.visual_checkpoint` is false.**
 
@@ -593,7 +657,7 @@ If issues → spawn debugger to investigate, then re-implement.
 
 ---
 
-## Step 8: Complete
+## Step 10: Complete
 
 All tests green (functional + security), verification passed.
 

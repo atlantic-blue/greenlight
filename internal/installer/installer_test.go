@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 30 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 32 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -26,6 +26,7 @@ func buildTestFS() fstest.MapFS {
 		"agents/gl-wrapper.md":                     &fstest.MapFile{Data: []byte("# Wrapper\n")},
 		"commands/gl/add-slice.md":                 &fstest.MapFile{Data: []byte("# Add Slice\n")},
 		"commands/gl/assess.md":                    &fstest.MapFile{Data: []byte("# Assess\n")},
+		"commands/gl/changelog.md":                 &fstest.MapFile{Data: []byte("# Changelog\n")},
 		"commands/gl/design.md":                    &fstest.MapFile{Data: []byte("# Design\n")},
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
@@ -33,6 +34,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/pause.md":                     &fstest.MapFile{Data: []byte("# Pause\n")},
 		"commands/gl/quick.md":                     &fstest.MapFile{Data: []byte("# Quick\n")},
 		"commands/gl/resume.md":                    &fstest.MapFile{Data: []byte("# Resume\n")},
+		"commands/gl/roadmap.md":                   &fstest.MapFile{Data: []byte("# Roadmap\n")},
 		"commands/gl/settings.md":                  &fstest.MapFile{Data: []byte("# Settings\n")},
 		"commands/gl/ship.md":                      &fstest.MapFile{Data: []byte("# Ship\n")},
 		"commands/gl/slice.md":                     &fstest.MapFile{Data: []byte("# Slice\n")},
@@ -633,9 +635,9 @@ func TestInstall_CLAUDEPrintedWithCorrectPath(t *testing.T) {
 
 // C-33 Tests: ManifestBrownfieldUpdate
 
-func TestManifest_Contains30Entries(t *testing.T) {
-	if len(installer.Manifest) != 30 {
-		t.Errorf("expected 30 manifest entries, got %d", len(installer.Manifest))
+func TestManifest_Contains32Entries(t *testing.T) {
+	if len(installer.Manifest) != 32 {
+		t.Errorf("expected 32 manifest entries, got %d", len(installer.Manifest))
 	}
 }
 
@@ -737,6 +739,7 @@ func TestManifest_CommandsSectionAlphabeticallyOrdered(t *testing.T) {
 	expectedOrder := []string{
 		"commands/gl/add-slice.md",
 		"commands/gl/assess.md",
+		"commands/gl/changelog.md",
 		"commands/gl/design.md",
 		"commands/gl/help.md",
 		"commands/gl/init.md",
@@ -744,6 +747,7 @@ func TestManifest_CommandsSectionAlphabeticallyOrdered(t *testing.T) {
 		"commands/gl/pause.md",
 		"commands/gl/quick.md",
 		"commands/gl/resume.md",
+		"commands/gl/roadmap.md",
 		"commands/gl/settings.md",
 		"commands/gl/ship.md",
 		"commands/gl/slice.md",
@@ -809,6 +813,144 @@ func TestManifest_BrownfieldEntriesInstalledCorrectly(t *testing.T) {
 		destPath := filepath.Join(targetDir, relPath)
 		if _, err := os.Stat(destPath); os.IsNotExist(err) {
 			t.Errorf("brownfield file %s was not installed", relPath)
+		}
+	}
+}
+
+// C-38 Tests: ManifestDocumentationUpdate
+
+func TestManifest_ContainsDocumentationCommands(t *testing.T) {
+	expectedDocs := []string{
+		"commands/gl/changelog.md",
+		"commands/gl/roadmap.md",
+	}
+
+	for _, expectedDoc := range expectedDocs {
+		found := false
+		for _, entry := range installer.Manifest {
+			if entry == expectedDoc {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("manifest missing documentation command: %s", expectedDoc)
+		}
+	}
+}
+
+func TestManifest_DocumentationCommandsAlphabeticallyOrdered(t *testing.T) {
+	var commandEntries []string
+	for _, entry := range installer.Manifest {
+		if strings.HasPrefix(entry, "commands/gl/") {
+			commandEntries = append(commandEntries, entry)
+		}
+	}
+
+	// Find positions of documentation commands
+	changelogIdx := -1
+	roadmapIdx := -1
+	assessIdx := -1
+	designIdx := -1
+
+	for i, entry := range commandEntries {
+		switch entry {
+		case "commands/gl/changelog.md":
+			changelogIdx = i
+		case "commands/gl/roadmap.md":
+			roadmapIdx = i
+		case "commands/gl/assess.md":
+			assessIdx = i
+		case "commands/gl/design.md":
+			designIdx = i
+		}
+	}
+
+	// Verify changelog comes after assess and before design
+	if changelogIdx == -1 {
+		t.Error("changelog.md not found in manifest")
+	}
+	if assessIdx == -1 {
+		t.Error("assess.md not found in manifest")
+	}
+	if designIdx == -1 {
+		t.Error("design.md not found in manifest")
+	}
+	if changelogIdx != -1 && assessIdx != -1 && changelogIdx <= assessIdx {
+		t.Errorf("changelog.md (index %d) should come after assess.md (index %d)", changelogIdx, assessIdx)
+	}
+	if changelogIdx != -1 && designIdx != -1 && changelogIdx >= designIdx {
+		t.Errorf("changelog.md (index %d) should come before design.md (index %d)", changelogIdx, designIdx)
+	}
+
+	// Verify roadmap comes after resume and before settings
+	resumeIdx := -1
+	settingsIdx := -1
+	for i, entry := range commandEntries {
+		switch entry {
+		case "commands/gl/resume.md":
+			resumeIdx = i
+		case "commands/gl/settings.md":
+			settingsIdx = i
+		}
+	}
+
+	if roadmapIdx == -1 {
+		t.Error("roadmap.md not found in manifest")
+	}
+	if resumeIdx == -1 {
+		t.Error("resume.md not found in manifest")
+	}
+	if settingsIdx == -1 {
+		t.Error("settings.md not found in manifest")
+	}
+	if roadmapIdx != -1 && resumeIdx != -1 && roadmapIdx <= resumeIdx {
+		t.Errorf("roadmap.md (index %d) should come after resume.md (index %d)", roadmapIdx, resumeIdx)
+	}
+	if roadmapIdx != -1 && settingsIdx != -1 && roadmapIdx >= settingsIdx {
+		t.Errorf("roadmap.md (index %d) should come before settings.md (index %d)", roadmapIdx, settingsIdx)
+	}
+}
+
+func TestManifest_AllDocumentationEntriesPresent(t *testing.T) {
+	documentationEntries := []string{
+		"commands/gl/changelog.md",
+		"commands/gl/roadmap.md",
+	}
+
+	manifestMap := make(map[string]bool)
+	for _, entry := range installer.Manifest {
+		manifestMap[entry] = true
+	}
+
+	for _, docEntry := range documentationEntries {
+		if !manifestMap[docEntry] {
+			t.Errorf("manifest missing documentation entry: %s", docEntry)
+		}
+	}
+}
+
+func TestManifest_DocumentationEntriesInstalledCorrectly(t *testing.T) {
+	contentFS := buildTestFS()
+	var buf bytes.Buffer
+	targetDir := t.TempDir()
+
+	inst := installer.New(contentFS, &buf)
+	err := inst.Install(targetDir, "global", installer.ConflictKeep)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	documentationFiles := []string{
+		"commands/gl/changelog.md",
+		"commands/gl/roadmap.md",
+	}
+
+	for _, relPath := range documentationFiles {
+		destPath := filepath.Join(targetDir, relPath)
+		if _, err := os.Stat(destPath); os.IsNotExist(err) {
+			t.Errorf("documentation file %s was not installed", relPath)
 		}
 	}
 }
