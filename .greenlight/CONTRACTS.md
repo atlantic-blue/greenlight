@@ -2703,3 +2703,733 @@ Invariants:
 | 7. User can view product roadmap and plan new milestones | S-15 | C-46, C-47, C-48 | /gl:roadmap command |
 | 8. User can see a human-readable changelog of everything that was built | S-16 | C-49, C-50 | /gl:changelog command |
 | 9. Brownfield context informs design and milestone planning | S-17 | C-51, C-52, C-53 | /gl:design + /gl:roadmap milestone + gl-designer updates |
+
+---
+
+---
+
+# Circuit Breaker Module Contracts
+
+> **Scope:** Attempt tracking, structured diagnostics, scope lock, manual override (/gl-debug), rollback via git tags
+> **Deliverables:** Markdown prompt files (reference doc + command + agent/command updates), NOT Go code
+> **Date:** 2026-02-18
+> **Design Reference:** Circuit Breaker System Design — FR-1 through FR-8
+
+---
+
+## Circuit Breaker Contract Index
+
+| # | Contract | Boundary | Slice |
+|---|----------|----------|-------|
+| C-54 | CircuitBreakerProtocol | Reference doc -> All agents (circuit breaker rules) | S-18 |
+| C-55 | ImplementerCircuitBreaker | gl-implementer agent -> Circuit breaker protocol (error recovery rewrite) | S-18 |
+| C-56 | ScopeLockProtocol | gl-implementer agent -> Contract-inferred scope (justify-or-stop) | S-18 |
+| C-57 | SliceCheckpointTags | /gl:slice orchestrator -> Git (lightweight checkpoint tags) | S-19 |
+| C-58 | SliceRollbackIntegration | /gl:slice orchestrator -> Rollback on circuit break | S-19 |
+| C-59 | DebugCommand | User -> /gl-debug command (manual diagnostic override) | S-20 |
+| C-60 | CLAUDEmdCircuitBreakerRule | CLAUDE.md -> All agents (5-line hard rule) | S-21 |
+| C-61 | ManifestCircuitBreakerUpdate | Go CLI -> Manifest (2 new file paths) | S-21 |
+
+---
+
+## S-18: Circuit Breaker Protocol and Implementer Integration
+
+*User Actions:*
+- *1. Implementer automatically stops after 3 failed attempts on a test (instead of looping endlessly)*
+- *2. User receives a structured diagnostic report when the circuit trips*
+- *3. Implementer justifies every out-of-scope file modification before making it*
+
+### C-54: CircuitBreakerProtocol
+
+```
+Contract: CircuitBreakerProtocol
+Boundary: Reference doc -> All agents that read it (gl-implementer, /gl:slice, /gl-debug)
+Slice: S-18 (Circuit Breaker Protocol and Implementer Integration)
+Design refs: FR-1, FR-2, FR-3, FR-4, FR-5
+
+FILE SPECIFICATION: src/references/circuit-breaker.md (~180 lines)
+
+This is the authoritative protocol document. All circuit breaker behaviour
+is defined here and referenced by agents and commands.
+
+Output (mandatory sections in the reference doc):
+
+  1. Attempt Tracking State
+     - State schema per test per slice:
+       - slice_id: string
+       - test_name: string
+       - attempt_count: number (0-3)
+       - files_touched_per_attempt: string[][] (array of arrays)
+       - description_per_attempt: string[]
+       - last_error_per_attempt: string[]
+       - checkpoint_tag: string (greenlight/checkpoint/{slice_id})
+     - Slice-level accumulator:
+       - total_failed_attempts: number (0-7)
+     - State is maintained in-memory by the implementer agent across attempts
+       within a single spawn
+
+  2. Per-Test Trip Threshold
+     - After 3 failed attempts on any single test, circuit trips (FR-2)
+     - Mandatory, not configurable
+     - Each "attempt" = one complete cycle of: read error, hypothesize fix,
+       modify files, run test, observe result
+     - Attempt counter increments only on test FAILURE, not on infrastructure
+       errors (syntax, import, missing dep)
+
+  3. Slice-Level Ceiling
+     - If total_failed_attempts across ALL tests in a slice exceeds 7,
+       circuit trips regardless of per-test counts (FR-3)
+     - This catches the pattern: 2 failures on test A, 2 on test B,
+       2 on test C, 2 on test D = 8 total, trips even though no single
+       test hit 3
+
+  4. Structured Diagnostic Report Format
+     - When circuit trips, produce a markdown report with these fields (FR-4):
+       a. test_expectation: what the test expects (from test name + contract)
+       b. actual_error: exact error output from the last test run (verbatim)
+       c. attempt_log: table with columns: Attempt, Hypothesis, Files Touched, Result
+       d. cumulative_files_modified: deduplicated list of all files touched across all attempts
+       e. scope_violations: list of any out-of-scope file modifications with justifications
+       f. best_hypothesis: the implementer's best guess at what's wrong
+       g. specific_question: one concrete question for the human (not "what should I do?")
+       h. recovery_options: numbered list including rollback command
+
+  5. Scope Lock Protocol
+     - Before modifying any file, check if within inferred scope (FR-5)
+     - Inferred scope = files referenced by contracts for the current slice,
+       plus files in packages listed in GRAPH.json slice definition
+     - Optional override: files_in_scope field in GRAPH.json slice object
+     - Out-of-scope modification requires justification:
+       - Justification must reference the specific failing test
+       - Justification must explain why the out-of-scope file must change
+     - Unjustifiable out-of-scope modification = scope violation = counts as
+       a failed attempt
+     - Scope violations are tracked and reported in the diagnostic report
+
+  6. Counter Reset Protocol
+     - Triggered when human provides input after a circuit break (FR-8)
+     - Per-test counters reset to 0
+     - Slice accumulator resets to 0
+     - Rollback to checkpoint tag: git checkout greenlight/checkpoint/{slice_id}
+     - Fresh implementer spawned with:
+       - Original contracts and test expectations
+       - User's guidance/input
+       - Summary of "what was tried" (from diagnostic report)
+       - Clean codebase state (from checkpoint)
+
+  7. Additive to Deviation Rules
+     - Circuit breaker protocol is additive to deviation-rules.md
+     - Deviation Rule 4 (ARCH-STOP) still takes priority over circuit breaker
+     - If an architectural stop is needed, report it immediately — do not
+       count it as a failed attempt
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoCheckpointTag | Checkpoint tag does not exist when rollback requested | Warn user. Cannot roll back. Start from current state |
+  | ScopeInferenceFailure | Cannot infer scope from contracts/GRAPH.json | Default to all files in the slice's packages list. Warn user scope lock is degraded |
+  | StateCorruption | Attempt state becomes inconsistent | Reset counters, warn user, continue from current state |
+
+Invariants:
+  - Per-test threshold is always 3 (not configurable)
+  - Slice-level ceiling is always 7 (not configurable)
+  - Diagnostic report is ALWAYS produced when circuit trips (never skipped)
+  - Scope lock applies to EVERY file modification (no exceptions)
+  - Circuit breaker does NOT modify test files (agent isolation preserved)
+  - Protocol is additive to deviation rules (does not replace them)
+  - Attempt counters count test FAILURES only, not infrastructure errors
+  - The reference doc is read-only at runtime (no agent writes to it)
+
+Security:
+  - Error output in diagnostic reports may contain file paths but NOT
+    credentials, tokens, or PII
+  - Checkpoint tags are lightweight git tags (no signed tags, no GPG)
+
+Dependencies: None (self-contained reference document)
+```
+
+### C-55: ImplementerCircuitBreaker
+
+```
+Contract: ImplementerCircuitBreaker
+Boundary: gl-implementer agent -> Circuit breaker protocol (error recovery section rewrite)
+Slice: S-18 (Circuit Breaker Protocol and Implementer Integration)
+Design refs: FR-1, FR-2, FR-3, FR-4, FR-5, FR-8
+
+AGENT UPDATE: src/agents/gl-implementer.md — REWRITE of <error_recovery> section (~40 lines)
+
+The existing <error_recovery> section (lines 145-182) is replaced entirely.
+The new section integrates the circuit breaker protocol from
+references/circuit-breaker.md into the implementer's error handling flow.
+
+Input (additional context from orchestrator):
+  - checkpoint_tag: string (greenlight/checkpoint/{slice_id})
+  - files_in_scope: string[] (inferred from contracts + GRAPH.json, or explicit override)
+  - what_was_tried: string (from previous diagnostic report, if counter was reset)
+  - user_guidance: string (from human input after circuit break, if any)
+
+Behaviour (replaces existing error_recovery):
+
+  1. Maintain Attempt State
+     - Track per-test attempt count (starts at 0)
+     - Track slice-level total failed attempts (starts at 0)
+     - Track files touched per attempt
+     - Track hypothesis and result per attempt
+
+  2. Before Every File Modification — Scope Check
+     - Determine if file is in scope (from files_in_scope)
+     - If in scope: proceed
+     - If out of scope: generate justification tied to failing test
+     - If justification is valid (references specific test, explains why): proceed,
+       log as scope deviation
+     - If justification is not valid: do NOT modify file, count as failed attempt,
+       log scope violation
+
+  3. On Test Failure — Increment and Check
+     - Increment per-test attempt count
+     - Increment slice-level total
+     - If per-test count >= 3: TRIP — produce diagnostic, stop
+     - If slice total > 7: TRIP — produce diagnostic, stop
+     - If neither threshold reached: read error carefully, hypothesize,
+       attempt targeted fix
+
+  4. On Circuit Trip — Produce Diagnostic Report
+     - Generate structured diagnostic per C-54 section 4
+     - Report to orchestrator with full diagnostic
+     - STOP implementation — do not attempt further fixes
+     - Include rollback command: git tag -d greenlight/checkpoint/{slice_id} &&
+       git checkout greenlight/checkpoint/{slice_id}
+
+  5. On Infrastructure Error (syntax, import, missing dep)
+     - Fix infrastructure issue (this is Rule 3: Unblock from deviation rules)
+     - Do NOT increment attempt counter
+     - Re-run test
+     - If same test failure after infrastructure fix: NOW increment counter
+
+Output (structured diagnostic when circuit trips):
+  - Diagnostic report in markdown format per C-54 section 4
+  - Report is returned to orchestrator (not written to file)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | PerTestTrip | 3 failures on single test | Produce diagnostic for that test. Stop |
+  | SliceCeilingTrip | >7 total failures across all tests | Produce diagnostic covering all failing tests. Stop |
+  | ScopeViolation | Unjustifiable out-of-scope modification | Count as failed attempt. Log violation. Continue if under threshold |
+  | InfrastructureError | Syntax/import/dep error (not test logic) | Fix without incrementing counter. If persists, treat as test failure |
+
+Invariants:
+  - Implementer reads references/circuit-breaker.md at start (added to "Read first" list)
+  - Attempt counters are maintained in-memory for the duration of the agent spawn
+  - Scope check happens BEFORE every file write (not after)
+  - Infrastructure errors are distinguished from test failures (no counter increment)
+  - Diagnostic report is structured (not free-form prose)
+  - The implementer NEVER modifies test files (existing prohibition preserved)
+  - The implementer NEVER disables or skips tests (existing prohibition preserved)
+  - "What was tried" context from previous attempts is used to avoid repeating
+    the same fix strategy
+
+Security:
+  - Diagnostic reports must not include credentials, tokens, or PII
+  - Scope lock prevents unauthorized file modifications
+
+Dependencies: C-54 (circuit breaker protocol must be defined first)
+```
+
+### C-56: ScopeLockProtocol
+
+```
+Contract: ScopeLockProtocol
+Boundary: gl-implementer agent -> Contract-inferred scope (justify-or-stop)
+Slice: S-18 (Circuit Breaker Protocol and Implementer Integration)
+Design refs: FR-5
+
+SCOPE LOCK SPECIFICATION (within circuit-breaker.md and gl-implementer.md)
+
+Scope inference rules (in priority order):
+
+  1. Explicit override: If GRAPH.json slice object has files_in_scope field,
+     use that list exclusively
+     ```json
+     {
+       "id": "S-XX",
+       "files_in_scope": ["internal/auth/", "internal/middleware/auth.go"]
+     }
+     ```
+
+  2. Inferred from contracts: Parse contract definitions for the current slice.
+     Extract:
+     - Package names from contract boundary descriptions
+     - File paths from contract FILE SPECIFICATION fields
+     - File paths from GRAPH.json slice "packages" or "deliverables" fields
+
+  3. Fallback: If neither explicit nor inferred scope is available,
+     use the slice's "packages" or "deliverables" field from GRAPH.json
+     as the scope boundary
+
+Input:
+  - Current slice contracts (from CONTRACTS.md)
+  - Current slice definition (from GRAPH.json)
+  - File path being modified
+
+Output:
+  - is_in_scope: boolean
+  - If out of scope: justification_required: boolean (always true)
+
+Justification format:
+  ```
+  SCOPE JUSTIFICATION
+  File: {file_path}
+  Failing test: {test_name}
+  Reason: {why this file must change to make the test pass}
+  Relationship: {how this file relates to the contract boundary}
+  ```
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoScopeData | No contracts, no GRAPH.json packages, no files_in_scope | All files are in scope (scope lock disabled). Warn in diagnostic |
+  | AmbiguousScope | Multiple interpretations possible | Use the union of all interpretations (broader scope) |
+
+Invariants:
+  - Scope check runs BEFORE every file modification
+  - In-scope files are never blocked (no justification needed)
+  - Out-of-scope files ALWAYS require justification (no exceptions)
+  - Justification must reference a specific failing test by name
+  - Unjustifiable modification = scope violation = failed attempt
+  - files_in_scope field in GRAPH.json is optional (not required)
+  - Scope lock is additive to existing agent isolation rules
+    (implementer still cannot modify test files, regardless of scope)
+  - Paths in files_in_scope support both file paths and directory paths
+    (directory = all files recursively within)
+
+Dependencies: C-54 (protocol defines scope lock rules), C-55 (implementer enforces them)
+```
+
+---
+
+## S-19: Slice Checkpoint Tags and Rollback Integration
+
+*User Actions:*
+- *5. Implementer rolls back to clean checkpoint state after human provides input*
+
+### C-57: SliceCheckpointTags
+
+```
+Contract: SliceCheckpointTags
+Boundary: /gl:slice orchestrator -> Git (lightweight checkpoint tags)
+Slice: S-19 (Slice Checkpoint Tags and Rollback Integration)
+Design refs: FR-7, FR-8
+
+COMMAND UPDATE: src/commands/gl/slice.md — Modify Step 3 (add checkpoint tag creation)
+
+Behaviour (added to Step 3 "Check for Previous Attempt" in existing /gl:slice):
+
+  After pre-flight validation passes and before Step 1 (Write Tests):
+
+  1. Create lightweight checkpoint tag:
+     ```bash
+     git tag greenlight/checkpoint/{slice_id}
+     ```
+
+  2. If tag already exists (from a previous attempt):
+     ```bash
+     # Remove old tag, create fresh one at current HEAD
+     git tag -d greenlight/checkpoint/{slice_id} 2>/dev/null
+     git tag greenlight/checkpoint/{slice_id}
+     ```
+
+  3. Report:
+     ```
+     Checkpoint created: greenlight/checkpoint/{slice_id}
+     ```
+
+  4. Pass checkpoint_tag to implementer context:
+     ```xml
+     <checkpoint>
+     Tag: greenlight/checkpoint/{slice_id}
+     Rollback: git checkout greenlight/checkpoint/{slice_id}
+     </checkpoint>
+     ```
+
+Tag naming convention:
+  - Format: greenlight/checkpoint/{slice_id}
+  - Example: greenlight/checkpoint/S-18
+  - Lightweight tags only (no annotated/signed tags)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | GitTagFailure | git tag command fails | Warn user. Proceed without checkpoint (rollback unavailable). Do not block slice |
+  | DirtyWorkingTree | Uncommitted changes when creating tag | Warn user: "Uncommitted changes detected. Checkpoint may not represent a clean state." Proceed anyway |
+
+Invariants:
+  - Checkpoint tag is created BEFORE any test writing or implementation
+  - Tag points to HEAD at the moment pre-flight completes
+  - Tag is lightweight (not annotated, not signed)
+  - Old tag for same slice is always replaced (idempotent)
+  - Tag creation failure does not block the slice pipeline
+  - Tag is passed to implementer as part of context
+
+Dependencies: None (git tag is a standard operation)
+```
+
+### C-58: SliceRollbackIntegration
+
+```
+Contract: SliceRollbackIntegration
+Boundary: /gl:slice orchestrator -> Rollback on circuit break
+Slice: S-19 (Slice Checkpoint Tags and Rollback Integration)
+Design refs: FR-7, FR-8
+
+COMMAND UPDATE: src/commands/gl/slice.md — Modify Step 3 (handle circuit break)
+and Step 10 (cleanup tag on success)
+
+Behaviour when implementer reports circuit break (from C-55):
+
+  1. Receive structured diagnostic from implementer
+  2. Present diagnostic report to user:
+     ```
+     CIRCUIT BREAK -- Slice {slice_id}
+
+     {formatted diagnostic report from C-54 section 4}
+
+     Recovery options:
+     1) Provide guidance and retry (rollback to checkpoint, fresh implementer)
+     2) Spawn debugger to investigate (/gl-debug)
+     3) Pause and review manually (/gl:pause)
+
+     Checkpoint: greenlight/checkpoint/{slice_id}
+     Rollback command: git checkout greenlight/checkpoint/{slice_id}
+     ```
+
+  3. If user chooses option 1 (guidance + retry):
+     a. Collect user guidance
+     b. Roll back to checkpoint:
+        ```bash
+        git checkout greenlight/checkpoint/{slice_id} -- .
+        ```
+     c. Reset attempt counters (per C-54 section 6)
+     d. Spawn fresh implementer with:
+        - Original contracts and test expectations
+        - User guidance
+        - "What was tried" summary from diagnostic report
+        - Clean codebase state (from rollback)
+     e. Create new checkpoint tag at current HEAD
+
+  4. If user chooses option 2 (debugger):
+     a. Pass diagnostic report to /gl-debug (see C-59)
+
+  5. If user chooses option 3 (pause):
+     a. Save diagnostic to .greenlight/.continue-here.md
+     b. Update STATE.md with circuit break info
+
+Behaviour on slice completion (successful):
+
+  1. After Step 10 (Complete) — clean up checkpoint tag:
+     ```bash
+     git tag -d greenlight/checkpoint/{slice_id} 2>/dev/null
+     ```
+  2. Report: `Checkpoint tag cleaned up: greenlight/checkpoint/{slice_id}`
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | RollbackFailure | git checkout fails (conflicts, missing tag) | Report error to user. Suggest manual recovery. Do not retry automatically |
+  | NoCheckpointTag | Tag does not exist when rollback requested | Warn user: "No checkpoint tag found. Cannot roll back. Starting from current state." Proceed with retry from current state |
+  | TagCleanupFailure | git tag -d fails on completion | Ignore. Stale tag is harmless |
+
+Invariants:
+  - Rollback uses `git checkout {tag} -- .` (restore working tree, not detach HEAD)
+  - Counter reset happens AFTER rollback, BEFORE fresh implementer spawn
+  - Fresh implementer always receives "what was tried" context
+  - User MUST provide guidance before retry (not an automatic retry)
+  - Tag cleanup on success is best-effort (failure does not block completion)
+  - Circuit break presentation uses the structured diagnostic format (not free-form)
+  - Existing /gl:slice error recovery (agent spawn failure, context overflow,
+    state corruption) is preserved — circuit break is an ADDITIONAL error path
+
+Security:
+  - Diagnostic report presented to user may contain file paths and error messages
+    but NOT credentials or tokens
+  - Rollback does not discard committed changes (only working tree changes)
+
+Dependencies: C-57 (checkpoint tags must be created first), C-55 (implementer produces diagnostic)
+```
+
+---
+
+## S-20: Debug Command (/gl-debug)
+
+*User Actions:*
+- *4. User can force a diagnostic at any time with /gl-debug (manual pull cord)*
+
+### C-59: DebugCommand
+
+```
+Contract: DebugCommand
+Boundary: User -> /gl-debug command (manual diagnostic override)
+Slice: S-20 (Debug Command)
+Design refs: FR-6
+
+COMMAND DEFINITION: src/commands/gl/debug.md (~80 lines)
+
+Input:
+  - User invokes /gl-debug (no arguments required)
+  - Optional: /gl-debug {slice_id} (to specify which slice to diagnose)
+
+Context read:
+  - .greenlight/STATE.md (current slice, step, last activity)
+  - .greenlight/GRAPH.json (slice definition, contracts)
+  - .greenlight/CONTRACTS.md (contract definitions for current slice)
+  - .greenlight/config.json (project context)
+  - Test results from latest run (if available)
+  - Git log for recent commits
+  - Git diff for uncommitted changes
+
+Behaviour:
+
+  1. Determine target slice:
+     - If slice_id argument provided: use that
+     - If STATE.md has current slice: use that
+     - If neither: report "No active slice found. Specify a slice: /gl-debug {slice_id}"
+
+  2. Gather diagnostic context:
+     a. Read current test results:
+        ```bash
+        {config.test.command} {config.test.filter_flag} {slice_id} 2>&1
+        ```
+     b. Read recent git activity:
+        ```bash
+        git log --oneline -10
+        git diff --stat
+        ```
+     c. Read STATE.md for step and progress
+     d. Read contracts for the slice
+     e. Check for checkpoint tag:
+        ```bash
+        git tag -l "greenlight/checkpoint/{slice_id}"
+        ```
+
+  3. Produce structured diagnostic report:
+     ```
+     DIAGNOSTIC REPORT -- Slice {slice_id}: {slice_name}
+     Generated: {timestamp}
+
+     ## Current State
+     Step: {step from STATE.md}
+     Last activity: {date}
+     Checkpoint: {tag exists? tag name : "none"}
+
+     ## Test Results
+     Total: {N}
+     Passing: {N}
+     Failing: {N}
+
+     {for each failing test:}
+     ### {test_name}
+     Expected: {inferred from contract + test name}
+     Actual: {exact error output}
+     Contracts: {which contract(s) this test verifies}
+
+     ## Recent Changes
+     {git log --oneline -10}
+
+     ## Uncommitted Changes
+     {git diff --stat}
+
+     ## Files in Scope
+     {inferred scope from contracts/GRAPH.json}
+
+     ## Recovery Options
+     1) Resume implementation (/gl:slice {slice_id})
+     2) Roll back to checkpoint: git checkout greenlight/checkpoint/{slice_id} -- .
+     3) Pause for manual investigation (/gl:pause)
+     4) Spawn fresh implementer with guidance
+
+     ## Specific Question
+     {auto-generated: the most likely root cause based on failing tests and recent changes}
+     ```
+
+  4. Present report to user (display only, no files written)
+
+Output:
+  - Structured diagnostic report displayed to user
+  - No files written (read-only command)
+  - Does not modify STATE.md or any project state
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoActiveSlice | No current slice in STATE.md and no argument provided | Print "No active slice. Usage: /gl-debug {slice_id}" and stop |
+  | NoConfig | config.json does not exist | Print "No config found. Run /gl:init first." and stop |
+  | TestRunFailure | Test command fails to execute | Include error in diagnostic: "Test command failed: {error}". Continue with partial diagnostic |
+  | NoContracts | CONTRACTS.md missing or no contracts for slice | Include warning in diagnostic: "No contracts found for slice {id}". Continue with partial diagnostic |
+
+Invariants:
+  - /gl-debug is strictly read-only (no files written, no state modified)
+  - /gl-debug can be run at ANY time, not just during circuit break
+  - /gl-debug does not control the pipeline (it diagnoses, it does not resume/retry)
+  - Diagnostic report follows the same structured format as circuit break diagnostics (C-54)
+  - /gl-debug works without a checkpoint tag (tag presence is informational)
+  - /gl-debug runs test suite to get current state (always fresh data)
+  - Report is structured for future pause/resume integration
+  - Does not spawn any subagents (direct read + display)
+
+Security:
+  - Read-only operation
+  - Error output may contain file paths but NOT credentials or tokens
+  - Does not expose test source code (displays test names and error output only)
+
+Dependencies: None (standalone command, works independently)
+```
+
+---
+
+## S-21: Circuit Breaker Infrastructure Integration
+
+*User Actions:*
+- Supports all 5 user actions (infrastructure enabling layer)
+
+### C-60: CLAUDEmdCircuitBreakerRule
+
+```
+Contract: CLAUDEmdCircuitBreakerRule
+Boundary: CLAUDE.md -> All agents (5-line hard rule in standards)
+Slice: S-21 (Circuit Breaker Infrastructure Integration)
+Design refs: FR-2, FR-3
+
+FILE UPDATE: src/CLAUDE.md
+
+Location: Insert as a new subsection within "Code Quality Constraints" section,
+after "Testing" and before "Logging & Observability".
+
+Content (exactly 5 lines, hard rule):
+  ### Circuit Breaker
+  - After 3 failed attempts on any single test, STOP and produce a structured diagnostic report
+  - After 7 total failed attempts across all tests in a slice, STOP regardless of per-test counts
+  - Before modifying any file, verify it is within inferred scope from contracts; justify out-of-scope changes
+  - Full protocol: `references/circuit-breaker.md`
+
+Errors: None (static content update)
+
+Invariants:
+  - Rule is exactly 5 lines (header + 4 bullet points)
+  - Rule references the full protocol in references/circuit-breaker.md
+  - Rule is placed within Code Quality Constraints section
+  - Existing CLAUDE.md sections unchanged
+  - This is a hard rule, not a recommendation — phrased as imperatives (STOP, verify, justify)
+  - The 3-per-test and 7-per-slice thresholds are stated explicitly in CLAUDE.md
+    (agents read CLAUDE.md first, before reading reference docs)
+
+Dependencies: C-54 (references/circuit-breaker.md must be defined; file created in S-18)
+```
+
+### C-61: ManifestCircuitBreakerUpdate
+
+```go
+// Contract: ManifestCircuitBreakerUpdate
+// Boundary: Go CLI -> Manifest (2 new file paths for circuit breaker)
+// Slice: S-21 (Circuit Breaker Infrastructure Integration)
+//
+// FILE: internal/installer/installer.go
+//
+// Change: Add 2 new entries to Manifest slice
+//
+// New entries (inserted in alphabetical order within their sections):
+//   "commands/gl/debug.md"               // NEW -- /gl-debug command
+//   "references/circuit-breaker.md"      // NEW -- circuit breaker protocol
+//
+// Updated Manifest (34 entries, up from 32):
+//   "agents/gl-architect.md"
+//   "agents/gl-assessor.md"
+//   "agents/gl-codebase-mapper.md"
+//   "agents/gl-debugger.md"
+//   "agents/gl-designer.md"
+//   "agents/gl-implementer.md"
+//   "agents/gl-security.md"
+//   "agents/gl-test-writer.md"
+//   "agents/gl-verifier.md"
+//   "agents/gl-wrapper.md"
+//   "commands/gl/add-slice.md"
+//   "commands/gl/assess.md"
+//   "commands/gl/changelog.md"
+//   "commands/gl/debug.md"              <-- NEW
+//   "commands/gl/design.md"
+//   "commands/gl/help.md"
+//   "commands/gl/init.md"
+//   "commands/gl/map.md"
+//   "commands/gl/pause.md"
+//   "commands/gl/quick.md"
+//   "commands/gl/resume.md"
+//   "commands/gl/roadmap.md"
+//   "commands/gl/settings.md"
+//   "commands/gl/ship.md"
+//   "commands/gl/slice.md"
+//   "commands/gl/status.md"
+//   "commands/gl/wrap.md"
+//   "references/checkpoint-protocol.md"
+//   "references/circuit-breaker.md"     <-- NEW
+//   "references/deviation-rules.md"
+//   "references/verification-patterns.md"
+//   "templates/config.md"
+//   "templates/state.md"
+//   "CLAUDE.md"
+//
+// Errors: none (compile-time constant)
+//
+// Invariants:
+// - CLAUDE.md remains the LAST entry
+// - Entries within each section (agents/, commands/gl/, references/) are
+//   alphabetically ordered
+// - go:embed directive in main.go already uses wildcards
+//   (src/commands/gl/*.md, src/references/*.md) so new .md files in
+//   those directories are automatically embedded -- no main.go change needed
+// - Manifest count increases from 32 to 34
+// - All existing tests that validate manifest count must be updated to expect 34
+// - This change is additive to C-33 and C-38 (previous manifest updates)
+//
+// Dependencies: C-33, C-38 (previous manifest updates must be applied first or simultaneously)
+```
+
+---
+
+## Cross-Cutting: GRAPH.json files_in_scope Field
+
+```
+Contract: GraphJsonFilesInScopeField
+Boundary: GRAPH.json -> Slice objects (optional files_in_scope field)
+Not a separate slice -- referenced by S-18 (scope lock uses it)
+Design ref: FR-5
+
+FIELD SPECIFICATION:
+
+  "files_in_scope": ["path/to/file.go", "path/to/dir/"]   // optional string array
+
+Rules:
+  - Optional field on slice objects in GRAPH.json
+  - String array of file paths and/or directory paths (relative to project root)
+  - Directory paths (ending in /) include all files recursively within
+  - When not specified, scope is inferred from contracts and slice packages/deliverables
+  - When specified, overrides inferred scope entirely
+  - Used by implementer's scope lock (C-55, C-56) to validate file modifications
+  - Does NOT affect dependency resolution, wave ordering, or any other GRAPH.json feature
+
+Invariants:
+  - Field is optional -- all existing slices work without it
+  - No impact on build order or dependency graph
+  - Paths are forward-slash separated (consistent with GRAPH.json conventions)
+  - Empty array means "no files in scope" (all modifications require justification)
+```
+
+---
+
+## Updated User Action Mapping (Circuit Breaker)
+
+| User Action | Slice(s) | Contracts | Enabled By |
+|-------------|----------|-----------|------------|
+| 1. Implementer automatically stops after 3 failed attempts on a test | S-18, S-21 | C-54, C-55, C-60 | Circuit breaker protocol + implementer rewrite + CLAUDE.md rule |
+| 2. User receives a structured diagnostic report when the circuit trips | S-18, S-19 | C-54, C-55, C-58 | Diagnostic format in protocol + implementer produces it + orchestrator presents it |
+| 3. Implementer justifies every out-of-scope file modification | S-18 | C-54, C-55, C-56 | Scope lock protocol + implementer enforcement |
+| 4. User can force a diagnostic at any time with /gl-debug | S-20, S-21 | C-59, C-61 | Debug command + manifest entry |
+| 5. Implementer rolls back to clean checkpoint state after human provides input | S-19 | C-57, C-58 | Checkpoint tags + rollback integration |

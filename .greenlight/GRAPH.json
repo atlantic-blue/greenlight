@@ -1,7 +1,7 @@
 {
   "project": "greenlight",
-  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, and documentation system. Defines build order by slice with explicit dependencies and parallelism.",
-  "date": "2026-02-09",
+  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, documentation system, and circuit breaker module. Defines build order by slice with explicit dependencies and parallelism.",
+  "date": "2026-02-18",
 
   "slices": {
     "S-01": {
@@ -225,6 +225,63 @@
         "/gl:roadmap milestone -> gl-designer (assessment + wrap progress)",
         "gl-designer agent -> Brownfield-aware design (risk tiers, [WRAPPED] tags)"
       ]
+    },
+
+    "S-18": {
+      "name": "Circuit Breaker Protocol and Implementer Integration",
+      "description": "Core circuit breaker protocol and implementer integration. Creates references/circuit-breaker.md (~180 lines) defining attempt tracking, per-test trip threshold (3), slice-level ceiling (7), structured diagnostic report format, scope lock protocol, and counter reset protocol. Rewrites gl-implementer.md <error_recovery> section (~40 lines) to enforce circuit breaker: attempt tracking, scope check before every file modification, auto-trip at thresholds, structured diagnostic output.",
+      "deliverables": ["src/references/circuit-breaker.md", "src/agents/gl-implementer.md (rewrite <error_recovery>)"],
+      "contracts": ["C-54", "C-55", "C-56"],
+      "depends_on": [],
+      "user_action": "1. Implementer stops after 3 failures; 2. User receives structured diagnostic; 3. Implementer justifies out-of-scope modifications",
+      "wave": 11,
+      "estimated_tests": 8,
+      "boundaries": [
+        "Reference doc -> All agents (circuit breaker rules)",
+        "gl-implementer agent -> Circuit breaker protocol (error recovery rewrite)",
+        "gl-implementer agent -> Contract-inferred scope (justify-or-stop)"
+      ]
+    },
+    "S-19": {
+      "name": "Slice Checkpoint Tags and Rollback Integration",
+      "description": "Integrates lightweight git checkpoint tags and rollback into /gl:slice. Modifies Step 3 to create greenlight/checkpoint/{slice_id} tag before implementation begins. Modifies implementer failure handling to present structured diagnostic and offer rollback + retry with user guidance. Modifies Step 10 to clean up checkpoint tag on success.",
+      "deliverables": ["src/commands/gl/slice.md (update)"],
+      "contracts": ["C-57", "C-58"],
+      "depends_on": ["S-18"],
+      "user_action": "5. Implementer rolls back to clean checkpoint state after human provides input",
+      "wave": 12,
+      "estimated_tests": 8,
+      "boundaries": [
+        "/gl:slice orchestrator -> Git (lightweight checkpoint tags)",
+        "/gl:slice orchestrator -> Rollback on circuit break"
+      ]
+    },
+    "S-20": {
+      "name": "Debug Command",
+      "description": "Standalone /gl-debug command that forces a structured diagnostic report at any time. Reads STATE.md for current slice, runs test suite, gathers git context, reads contracts, and produces a structured diagnostic report displayed to the user. Read-only: no files written, no state modified. Does not control the pipeline.",
+      "deliverables": ["src/commands/gl/debug.md"],
+      "contracts": ["C-59"],
+      "depends_on": ["S-18"],
+      "user_action": "4. User can force a diagnostic at any time with /gl-debug (manual pull cord)",
+      "wave": 12,
+      "estimated_tests": 6,
+      "boundaries": [
+        "User -> /gl-debug command (manual diagnostic override)"
+      ]
+    },
+    "S-21": {
+      "name": "Circuit Breaker Infrastructure Integration",
+      "description": "Ties circuit breaker into Greenlight infrastructure. Adds 5-line Circuit Breaker subsection to src/CLAUDE.md under Code Quality Constraints (hard rule: 3 per-test, 7 per-slice, scope lock, reference to full protocol). Adds 2 new manifest entries to installer.go (commands/gl/debug.md, references/circuit-breaker.md). Updates manifest count in tests from 32 to 34.",
+      "deliverables": ["src/CLAUDE.md (update)", "internal/installer/installer.go (manifest update +2)", "internal/installer/manifest_docs_test.go (count update)"],
+      "contracts": ["C-60", "C-61"],
+      "depends_on": ["S-18", "S-20"],
+      "user_action": "Supports all 5 user actions (infrastructure enabling layer)",
+      "wave": 13,
+      "estimated_tests": 6,
+      "boundaries": [
+        "CLAUDE.md -> All agents (5-line hard rule)",
+        "Go CLI -> Manifest (2 new file paths)"
+      ]
     }
   },
 
@@ -288,6 +345,24 @@
       "slices": ["S-17"],
       "parallel": false,
       "scope": "documentation"
+    },
+    "11": {
+      "description": "Circuit breaker core: reference protocol document and implementer integration. No dependencies on other milestones. Standalone foundation for all circuit breaker features.",
+      "slices": ["S-18"],
+      "parallel": false,
+      "scope": "circuit-breaker"
+    },
+    "12": {
+      "description": "Circuit breaker features: checkpoint/rollback integration into /gl:slice and standalone /gl-debug command. Both depend on S-18 (protocol must exist) and can be built in parallel.",
+      "slices": ["S-19", "S-20"],
+      "parallel": true,
+      "scope": "circuit-breaker"
+    },
+    "13": {
+      "description": "Circuit breaker infrastructure: CLAUDE.md hard rule and manifest entries. Depends on S-18 (protocol must exist) and S-20 (debug command must exist for manifest entry).",
+      "slices": ["S-21"],
+      "parallel": false,
+      "scope": "circuit-breaker"
     }
   },
 
@@ -313,7 +388,11 @@
     { "from": "S-15", "to": "S-13", "reason": "Roadmap command reads and modifies ROADMAP.md which must exist (created by C-36 via /gl:design update)" },
     { "from": "S-16", "to": "S-13", "reason": "Changelog command reads summaries/ and needs roadmap.md and changelog.md in manifest (C-38)" },
     { "from": "S-17", "to": "S-12", "reason": "Brownfield-roadmap integration reads ASSESS.md and CONTRACTS.md which are produced by brownfield infrastructure (S-12)" },
-    { "from": "S-17", "to": "S-15", "reason": "Roadmap milestone planning context blocks extend the roadmap command established by S-15" }
+    { "from": "S-17", "to": "S-15", "reason": "Roadmap milestone planning context blocks extend the roadmap command established by S-15" },
+    { "from": "S-19", "to": "S-18", "reason": "Checkpoint/rollback integration references circuit breaker protocol (C-54) and implementer diagnostic output (C-55)" },
+    { "from": "S-20", "to": "S-18", "reason": "Debug command produces structured diagnostic in the format defined by circuit breaker protocol (C-54)" },
+    { "from": "S-21", "to": "S-18", "reason": "CLAUDE.md rule references circuit-breaker.md which must exist; manifest entry for references/circuit-breaker.md requires the file" },
+    { "from": "S-21", "to": "S-20", "reason": "Manifest entry for commands/gl/debug.md requires the debug command file to exist" }
   ],
 
   "import_graph": {
@@ -369,6 +448,31 @@
       "action": "Brownfield context informs design and milestone planning (risk tiers, wrap progress, [WRAPPED] boundaries)",
       "slices": ["S-17", "S-15", "S-12"],
       "primary_slice": "S-17"
+    },
+    "10_circuit_breaker_auto_stop": {
+      "action": "Implementer automatically stops after 3 failed attempts on a test (instead of looping endlessly)",
+      "slices": ["S-18", "S-21"],
+      "primary_slice": "S-18"
+    },
+    "11_circuit_breaker_diagnostic": {
+      "action": "User receives a structured diagnostic report when the circuit trips (exact errors, attempts log, hypothesis, specific question)",
+      "slices": ["S-18", "S-19"],
+      "primary_slice": "S-18"
+    },
+    "12_scope_lock": {
+      "action": "Implementer justifies every out-of-scope file modification before making it (prevents scope creep and phantom fixes)",
+      "slices": ["S-18"],
+      "primary_slice": "S-18"
+    },
+    "13_manual_debug": {
+      "action": "User can force a diagnostic at any time with /gl-debug (manual pull cord)",
+      "slices": ["S-20", "S-21"],
+      "primary_slice": "S-20"
+    },
+    "14_rollback": {
+      "action": "Implementer rolls back to clean checkpoint state after human provides input (no debris from failed attempts)",
+      "slices": ["S-19"],
+      "primary_slice": "S-19"
     }
   }
 }

@@ -26,13 +26,19 @@ Mode: yolo
 | S-15 | Roadmap Command | complete | 29 | 0 | S-13 |
 | S-16 | Changelog Command | complete | 30 | 0 | S-13 |
 | S-17 | Brownfield-Roadmap Integration | complete | 20 | 0 | S-12, S-15 |
+| S-18 | Circuit Breaker Protocol + Implementer | pending | 0 | 0 | none |
+| S-19 | Checkpoint Tags + Rollback | pending | 0 | 0 | S-18 |
+| S-20 | Debug Command | pending | 0 | 0 | S-18 |
+| S-21 | Infrastructure Integration | pending | 0 | 0 | S-18, S-20 |
 
-Progress: [█████████████████] 17/17 slices
+Progress: [█████████████████░░░] 17/21 slices
 
 ## Current
 
-Building documentation features.
-Last activity: 2026-02-09 — S-17 complete (brownfield-roadmap integration). ALL SLICES COMPLETE.
+Milestone: circuit-breaker
+Slice: S-18 — Circuit Breaker Protocol + Implementer Integration
+Step: pending
+Last activity: 2026-02-18 — Circuit breaker milestone designed, contracts generated (C-54 through C-61)
 
 ## Test Summary
 
@@ -50,6 +56,14 @@ Last run: 2026-02-09
 - UD-3: File mapping always + coverage optional
 - UD-4: Separate Wrapped Boundaries section in STATE.md
 - UD-5: Markdown content tests read actual src/ files via os.ReadFile
+- D-15: Scope lock inferred from contracts with optional GRAPH.json override
+- D-16: Per-test (3) + slice ceiling (7) attempt tracking
+- D-17: Rollback via lightweight git tags
+- D-18: /gl-debug standalone, structured for future integration
+- D-19: 5-line CLAUDE.md rule + references/circuit-breaker.md protocol
+- D-20: Diagnostic report as structured fields rendered as markdown
+- D-21: Slice ceiling at 7 total failures
+- D-22: Checkpoint tags cleaned up at slice completion
 
 ## Blockers
 
@@ -57,5 +71,5 @@ None
 
 ## Session
 
-Last session: 2026-02-09
+Last session: 2026-02-18
 Resume file: None
