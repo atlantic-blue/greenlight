@@ -104,6 +104,12 @@ These apply to ALL code regardless of language or framework.
 - Use factories/fixtures for test data, not copy-pasted objects
 - Test the sad path: timeout, invalid input, missing data, concurrent access
 
+### Circuit Breaker
+- After 3 failed attempts on any single test, STOP and produce a structured diagnostic report
+- After 7 total failed attempts across all tests in a slice, STOP regardless of per-test counts
+- Before modifying any file, verify it is within inferred scope from contracts; justify out-of-scope changes
+- Full protocol: `references/circuit-breaker.md`
+
 ### Logging & Observability
 - Structured logging (JSON) in production, human-readable in dev
 - Every request gets a correlation ID

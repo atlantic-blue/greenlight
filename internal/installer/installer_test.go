@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 32 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 34 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -27,6 +27,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/add-slice.md":                 &fstest.MapFile{Data: []byte("# Add Slice\n")},
 		"commands/gl/assess.md":                    &fstest.MapFile{Data: []byte("# Assess\n")},
 		"commands/gl/changelog.md":                 &fstest.MapFile{Data: []byte("# Changelog\n")},
+		"commands/gl/debug.md":                     &fstest.MapFile{Data: []byte("# Debug\n")},
 		"commands/gl/design.md":                    &fstest.MapFile{Data: []byte("# Design\n")},
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
@@ -41,6 +42,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/status.md":                    &fstest.MapFile{Data: []byte("# Status\n")},
 		"commands/gl/wrap.md":                      &fstest.MapFile{Data: []byte("# Wrap\n")},
 		"references/checkpoint-protocol.md":        &fstest.MapFile{Data: []byte("# Checkpoint Protocol\n")},
+		"references/circuit-breaker.md":            &fstest.MapFile{Data: []byte("# Circuit Breaker\n")},
 		"references/deviation-rules.md":            &fstest.MapFile{Data: []byte("# Deviation Rules\n")},
 		"references/verification-patterns.md":      &fstest.MapFile{Data: []byte("# Verification Patterns\n")},
 		"templates/config.md":                      &fstest.MapFile{Data: []byte("# Config Template\n")},
@@ -636,8 +638,8 @@ func TestInstall_CLAUDEPrintedWithCorrectPath(t *testing.T) {
 // C-33 Tests: ManifestBrownfieldUpdate
 
 func TestManifest_Contains32Entries(t *testing.T) {
-	if len(installer.Manifest) != 32 {
-		t.Errorf("expected 32 manifest entries, got %d", len(installer.Manifest))
+	if len(installer.Manifest) != 34 {
+		t.Errorf("expected 34 manifest entries, got %d", len(installer.Manifest))
 	}
 }
 
@@ -740,6 +742,7 @@ func TestManifest_CommandsSectionAlphabeticallyOrdered(t *testing.T) {
 		"commands/gl/add-slice.md",
 		"commands/gl/assess.md",
 		"commands/gl/changelog.md",
+		"commands/gl/debug.md",
 		"commands/gl/design.md",
 		"commands/gl/help.md",
 		"commands/gl/init.md",
