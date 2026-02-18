@@ -137,6 +137,29 @@ Update `.greenlight/STATE.md`:
 
 ---
 
+## Checkpoint: Create Rollback Tag
+
+After pre-flight completes, create a checkpoint tag under the greenlight/checkpoint/ namespace so the implementer can roll back if needed.
+
+The tag name follows the pattern: `greenlight/checkpoint/{slice_id}`
+
+```bash
+# Idempotent: remove any pre-existing tag for this slice before re-creating
+git tag -d greenlight/checkpoint/{slice_id} 2>/dev/null || true
+
+# Create fresh checkpoint tag at the current HEAD
+git tag greenlight/checkpoint/{slice_id}
+```
+
+Report:
+```
+Checkpoint created: greenlight/checkpoint/{slice_id}
+```
+
+This tag is passed to the implementer as context and cleaned up on successful completion.
+
+---
+
 ## Step 1: Write Tests (Agent A — Fresh Context)
 
 The test writer NEVER sees implementation code. Send ONLY contracts, stack info, and existing test patterns.
@@ -292,6 +315,11 @@ Database: {database}
 Patterns: {patterns from prior slices}
 </stack>
 
+<checkpoint>
+checkpoint_tag: greenlight/checkpoint/{slice_id}
+Rollback: orchestrator restores from checkpoint_tag on CIRCUIT BREAK
+</checkpoint>
+
 <test_command>
 {config.test.command} {config.test.filter_flag} {slice-id}
 </test_command>
@@ -326,7 +354,31 @@ Options:
 3) Pause and review manually (/gl:pause)
 ```
 
-Max 3 implementation attempts. After 3 failures → pause and ask user.
+Max 3 implementation attempts. After 3 failures → CIRCUIT BREAK.
+
+**CIRCUIT BREAK — implementation could not be completed after 3 attempts:**
+
+```
+CIRCUIT BREAK
+
+Slice {slice_id} implementation failed after {N} attempts.
+
+Failing tests:
+- {test name}: {failure reason}
+
+Recovery options:
+1) guidance + retry — provide additional guidance, roll back to the checkpoint, and spawn a fresh implementer with the guidance as additional context
+
+2) debugger — spawn gl-debugger to investigate the root cause before retrying
+
+3) Pause — stop here and review manually (/gl:pause)
+
+Which option?
+```
+
+On retry (option 1): roll back to the checkpoint tag (see checkpoint protocol below), reset attempt counters, and spawn a fresh implementer with the guidance as additional context.
+On debugger (option 2): spawn gl-debugger with failure context, then resume from the implementer step.
+On pause (option 3): save state and halt.
 
 **Architectural stop (Rule 4 deviation):**
 Present the stop to the user using checkpoint protocol:
@@ -660,6 +712,15 @@ If issues → spawn debugger to investigate, then re-implement.
 ## Step 10: Complete
 
 All tests green (functional + security), verification passed.
+
+### Cleanup Checkpoint Tag
+
+Remove the checkpoint tag now that the slice has completed successfully. The tag was used during implementation to allow rollback via `git checkout greenlight/checkpoint/{slice_id} -- .` if a CIRCUIT BREAK occurred.
+
+```bash
+# Best-effort cleanup — ignore error if tag was already removed
+git tag -d greenlight/checkpoint/{slice_id} 2>/dev/null || true
+```
 
 ### Update STATE.md
 
