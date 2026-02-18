@@ -28,21 +28,21 @@ Mode: yolo
 | S-17 | Brownfield-Roadmap Integration | complete | 20 | 0 | S-12, S-15 |
 | S-18 | Circuit Breaker Protocol + Implementer | complete | 17 | 0 | none |
 | S-19 | Checkpoint Tags + Rollback | complete | 8 | 0 | S-18 |
-| S-20 | Debug Command | pending | 0 | 0 | S-18 |
+| S-20 | Debug Command | complete | 8 | 0 | S-18 |
 | S-21 | Infrastructure Integration | pending | 0 | 0 | S-18, S-20 |
 
-Progress: [███████████████████░] 19/21 slices
+Progress: [████████████████████] 20/21 slices
 
 ## Current
 
 Milestone: circuit-breaker
-Slice: S-19 — Checkpoint Tags + Rollback Integration
+Slice: S-20 — Debug Command
 Step: complete
-Last activity: 2026-02-18 — S-19 complete
+Last activity: 2026-02-18 — S-20 complete
 
 ## Test Summary
 
-Total: 440 passing, 0 failing, 0 security
+Total: 448 passing, 0 failing, 0 security
 Last run: 2026-02-18
 
 ## Decisions
