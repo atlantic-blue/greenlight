@@ -128,7 +128,7 @@ graph TD
 | Slice | Description | Status | Tests | Completed | Key Decision |
 |-------|-------------|--------|-------|-----------|--------------|
 | S-22 | Schema extension: contract verification fields | complete | 24 | 2026-02-19 | verification/acceptance_criteria/steps in contracts, default verify |
-| - | Verification gate: Step 6b in /gl:slice | pending | - | - | verify > auto resolution, one checkpoint per slice |
+| S-23 | Verification gate: Step 6b in /gl:slice | complete | 37 | 2026-02-19 | verify > auto resolution, one checkpoint per slice |
 | - | Rejection flow: classification and TDD routing | pending | - | - | Routes through test writer first, behavioral feedback only |
 | - | Rejection counter: escalation at 3 | pending | - | - | Per-slice counter, re-scope/pair/skip options |
 | - | Documentation: CLAUDE.md, checkpoint, deprecation | pending | - | - | New references/verification-tiers.md, deprecate visual_checkpoint |
