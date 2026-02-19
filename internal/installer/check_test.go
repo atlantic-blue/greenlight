@@ -77,7 +77,7 @@ func TestCheck_AllFilesPresentAndNonEmpty_ReturnsTrue(t *testing.T) {
 	}
 
 	output := buf.String()
-	expectedSummary := "all 34 files present\n"
+	expectedSummary := "all 35 files present\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -160,7 +160,7 @@ func TestCheck_MultipleFilesMissing_CorrectCountInSummary(t *testing.T) {
 
 	output := buf.String()
 	// Should report 27/30 files present (3 missing)
-	expectedSummary := "31/34 files present (3 missing, 0 empty)\n"
+	expectedSummary := "32/35 files present (3 missing, 0 empty)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -268,7 +268,7 @@ func TestCheck_VerifyFalseWithNilContentFS_WorksFine(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "all 34 files present") {
+	if !strings.Contains(output, "all 35 files present") {
 		t.Errorf("expected success message, got: %q", output)
 	}
 }
@@ -288,7 +288,7 @@ func TestCheck_VerifyTrue_AllFilesMatchEmbeddedContent_ReturnsTrue(t *testing.T)
 	}
 
 	output := buf.String()
-	expectedSummary := "all 34 files verified\n"
+	expectedSummary := "all 35 files verified\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -348,7 +348,7 @@ func TestCheck_VerifyTrue_SummaryIncludesModifiedCount(t *testing.T) {
 
 	output := buf.String()
 	// Should report 28/30 files verified (0 missing, 0 empty, 2 modified)
-	expectedSummary := "32/34 files verified (0 missing, 0 empty, 2 modified)\n"
+	expectedSummary := "33/35 files verified (0 missing, 0 empty, 2 modified)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -385,7 +385,7 @@ func TestCheck_VerifyTrue_MissingAndModified_SummaryShowsBoth(t *testing.T) {
 
 	output := buf.String()
 	// 27/30 verified (1 missing, 1 empty, 1 modified)
-	expectedSummary := "31/34 files verified (1 missing, 1 empty, 1 modified)\n"
+	expectedSummary := "32/35 files verified (1 missing, 1 empty, 1 modified)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -466,28 +466,28 @@ func TestCheck_SummaryAlwaysLastLine(t *testing.T) {
 			setup: func(t *testing.T, targetDir string) {
 				// no-op, files already installed
 			},
-			expectedLast: "all 34 files present\n",
+			expectedLast: "all 35 files present\n",
 		},
 		{
 			name: "one file missing",
 			setup: func(t *testing.T, targetDir string) {
 				os.Remove(filepath.Join(targetDir, "agents/gl-architect.md"))
 			},
-			expectedLast: "33/34 files present (1 missing, 0 empty)\n",
+			expectedLast: "34/35 files present (1 missing, 0 empty)\n",
 		},
 		{
 			name: "one file empty",
 			setup: func(t *testing.T, targetDir string) {
 				os.WriteFile(filepath.Join(targetDir, "agents/gl-debugger.md"), []byte{}, 0o644)
 			},
-			expectedLast: "34/34 files present (0 missing, 1 empty)\n",
+			expectedLast: "35/35 files present (0 missing, 1 empty)\n",
 		},
 		{
 			name: "version file missing",
 			setup: func(t *testing.T, targetDir string) {
 				os.Remove(filepath.Join(targetDir, ".greenlight-version"))
 			},
-			expectedLast: "34/34 files present (0 missing, 0 empty)\n",
+			expectedLast: "35/35 files present (0 missing, 0 empty)\n",
 		},
 	}
 
@@ -600,15 +600,15 @@ func TestCheck_VerifyMode_AllFilesChecked(t *testing.T) {
 	}
 
 	output := buf.String()
-	expectedSummary := "0/34 files verified (0 missing, 0 empty, 34 modified)\n"
+	expectedSummary := "0/35 files verified (0 missing, 0 empty, 35 modified)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
 
 	// Count MODIFIED lines
 	modifiedCount := strings.Count(output, "  MODIFIED ")
-	if modifiedCount != 34 {
-		t.Errorf("expected 34 MODIFIED messages, got %d", modifiedCount)
+	if modifiedCount != 35 {
+		t.Errorf("expected 35 MODIFIED messages, got %d", modifiedCount)
 	}
 }
 
@@ -711,7 +711,7 @@ func TestCheck_PresenceOnlyDoesNotVerifyContent(t *testing.T) {
 		t.Error("presence-only mode should not report MODIFIED files")
 	}
 
-	expectedSummary := "all 34 files present\n"
+	expectedSummary := "all 35 files present\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected success summary, got: %q", output)
 	}
@@ -758,8 +758,8 @@ func TestCheck_MultipleFailureTypes_AllReported(t *testing.T) {
 	}
 
 	// Verify summary (29/32: 2 missing, 2 empty, 2 modified, but files themselves)
-	// Actually: 32 manifest files, 2 missing + 2 empty + 2 modified = 26 ok
-	expectedSummary := "28/34 files verified (2 missing, 2 empty, 2 modified)\n"
+	// Actually: 35 manifest files, 2 missing + 2 empty + 2 modified = 29 ok
+	expectedSummary := "29/35 files verified (2 missing, 2 empty, 2 modified)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -813,13 +813,13 @@ func TestCheck_EmptyDirectory_AllFilesMissing(t *testing.T) {
 
 	output := buf.String()
 
-	// All 34 files should be reported missing
+	// All 35 files should be reported missing
 	missingCount := strings.Count(output, "  MISSING  ")
-	if missingCount != 35 { // 34 manifest files + 1 version file
-		t.Errorf("expected 35 MISSING messages, got %d", missingCount)
+	if missingCount != 36 { // 35 manifest files + 1 version file
+		t.Errorf("expected 36 MISSING messages, got %d", missingCount)
 	}
 
-	expectedSummary := "0/34 files present (34 missing, 0 empty)\n"
+	expectedSummary := "0/35 files present (35 missing, 0 empty)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -933,8 +933,8 @@ func TestCheck_ExitEarlyOnFileChecks_ContinuesAfterFailure(t *testing.T) {
 	output := buf.String()
 
 	// Verify Check continues after first failure and checks remaining files
-	// The summary should still account for all 34 files
-	if !strings.Contains(output, "33/34 files present") {
+	// The summary should still account for all 35 files
+	if !strings.Contains(output, "34/35 files present") {
 		t.Error("Check should continue checking all files after first failure")
 	}
 }
@@ -956,7 +956,7 @@ func TestCheck_EmptyAndMissingBothCounted(t *testing.T) {
 	}
 
 	output := buf.String()
-	expectedSummary := "33/34 files present (1 missing, 1 empty)\n"
+	expectedSummary := "34/35 files present (1 missing, 1 empty)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -979,9 +979,9 @@ func TestCheck_PresentCountExcludesMissingOnly(t *testing.T) {
 	installer.Check(targetDir, "global", &buf, false, nil)
 
 	output := buf.String()
-	// 31 present (34 - 3 missing), but 1 of those is empty
+	// 32 present (35 - 3 missing), but 1 of those is empty
 	// Summary format: "<present>/<total> files present (<missing> missing, <empty> empty)"
-	expectedSummary := "31/34 files present (3 missing, 1 empty)\n"
+	expectedSummary := "32/35 files present (3 missing, 1 empty)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}

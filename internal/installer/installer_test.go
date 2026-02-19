@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 34 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 35 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -45,6 +45,7 @@ func buildTestFS() fstest.MapFS {
 		"references/circuit-breaker.md":            &fstest.MapFile{Data: []byte("# Circuit Breaker\n")},
 		"references/deviation-rules.md":            &fstest.MapFile{Data: []byte("# Deviation Rules\n")},
 		"references/verification-patterns.md":      &fstest.MapFile{Data: []byte("# Verification Patterns\n")},
+		"references/verification-tiers.md":         &fstest.MapFile{Data: []byte("# Verification Tiers\n")},
 		"templates/config.md":                      &fstest.MapFile{Data: []byte("# Config Template\n")},
 		"templates/state.md":                       &fstest.MapFile{Data: []byte("# State Template\n")},
 		"CLAUDE.md":                                &fstest.MapFile{Data: []byte("# Greenlight CLAUDE.md\n\nTest content\n")},
@@ -638,8 +639,8 @@ func TestInstall_CLAUDEPrintedWithCorrectPath(t *testing.T) {
 // C-33 Tests: ManifestBrownfieldUpdate
 
 func TestManifest_Contains32Entries(t *testing.T) {
-	if len(installer.Manifest) != 34 {
-		t.Errorf("expected 34 manifest entries, got %d", len(installer.Manifest))
+	if len(installer.Manifest) != 35 {
+		t.Errorf("expected 35 manifest entries, got %d", len(installer.Manifest))
 	}
 }
 

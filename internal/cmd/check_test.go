@@ -13,7 +13,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
-// buildTestContentFS creates a complete MapFS with all 34 manifest files for testing.
+// buildTestContentFS creates a complete MapFS with all 35 manifest files for testing.
 func buildTestContentFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -47,6 +47,7 @@ func buildTestContentFS() fstest.MapFS {
 		"references/circuit-breaker.md":            &fstest.MapFile{Data: []byte("# Circuit Breaker\n")},
 		"references/deviation-rules.md":            &fstest.MapFile{Data: []byte("# Deviation Rules\n")},
 		"references/verification-patterns.md":      &fstest.MapFile{Data: []byte("# Verification Patterns\n")},
+		"references/verification-tiers.md":         &fstest.MapFile{Data: []byte("# Verification Tiers\n")},
 		"templates/config.md":                      &fstest.MapFile{Data: []byte("# Config Template\n")},
 		"templates/state.md":                       &fstest.MapFile{Data: []byte("# State Template\n")},
 		"CLAUDE.md":                                &fstest.MapFile{Data: []byte("# Greenlight CLAUDE.md\n\nTest content\n")},
@@ -125,7 +126,7 @@ func TestRunCheck_ReturnsZeroWhenAllFilesPresent_Local(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "all 34 files present") {
+	if !strings.Contains(output, "all 35 files present") {
 		t.Errorf("expected success message in output: %q", output)
 	}
 }
@@ -257,7 +258,7 @@ func TestRunCheck_WithVerifyFlag_PassesVerifyTrueToCheck(t *testing.T) {
 
 	output := buf.String()
 	// When verify=true, output should say "verified" instead of "present"
-	if !strings.Contains(output, "all 34 files verified") {
+	if !strings.Contains(output, "all 35 files verified") {
 		t.Errorf("expected 'verified' message (indicating verify=true), got: %q", output)
 	}
 }
@@ -294,7 +295,7 @@ func TestRunCheck_WithoutVerifyFlag_PassesVerifyFalseToCheck(t *testing.T) {
 
 	output := buf.String()
 	// Without --verify, should say "present" not "verified"
-	if !strings.Contains(output, "all 34 files present") {
+	if !strings.Contains(output, "all 35 files present") {
 		t.Errorf("expected 'present' message (indicating verify=false), got: %q", output)
 	}
 

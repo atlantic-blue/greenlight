@@ -133,7 +133,7 @@ Model identifiers: `opus`, `sonnet`, `haiku`.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | security_scan | boolean | true | Run security agent after each slice |
-| visual_checkpoint | boolean | true | Pause for visual verification on UI slices |
+| visual_checkpoint | boolean | true | **Deprecated.** Pause for visual verification on UI slices. Use `**Verification: verify**` in contract definitions instead. If set to `true`, a deprecation warning is logged and the Step 6b acceptance checkpoint is used. See `references/verification-tiers.md`. |
 | auto_parallel | boolean | true | Suggest parallel slices when available |
 | max_implementation_retries | number | 3 | Max attempts to make tests pass |
 | max_security_retries | number | 2 | Max attempts to fix security issues |

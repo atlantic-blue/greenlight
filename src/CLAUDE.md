@@ -110,6 +110,12 @@ These apply to ALL code regardless of language or framework.
 - Before modifying any file, verify it is within inferred scope from contracts; justify out-of-scope changes
 - Full protocol: `references/circuit-breaker.md`
 
+### Verification Tiers
+- Every contract has a verification tier: `auto` or `verify` (default)
+- After tests pass and verifier approves, the tier gate determines if human acceptance is required
+- Rejection feedback routes to the test writer first -- if the implementation is wrong, the tests weren't tight enough
+- Full protocol: `references/verification-tiers.md`
+
 ### Logging & Observability
 - Structured logging (JSON) in production, human-readable in dev
 - Every request gets a correlation ID

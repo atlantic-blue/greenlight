@@ -45,6 +45,7 @@ var Manifest = []string{
 	"references/circuit-breaker.md",
 	"references/deviation-rules.md",
 	"references/verification-patterns.md",
+	"references/verification-tiers.md",
 	"templates/config.md",
 	"templates/state.md",
 	"CLAUDE.md",

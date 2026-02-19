@@ -4,7 +4,9 @@ When and how to pause for human input during automated execution.
 
 ## Checkpoint Types
 
-### 1. Visual Checkpoint (most common)
+### 1. Visual Checkpoint (deprecated)
+
+> **Deprecated.** Use `**Verification: verify**` in contract definitions instead. The Acceptance checkpoint (Step 6b) now handles all human acceptance for slice output. The `visual_checkpoint` config key is also deprecated. See `references/verification-tiers.md` for the replacement.
 
 **When:** A slice includes user-facing UI that automated tests can't fully verify.
 
@@ -33,6 +35,39 @@ Type "approved" to continue, or describe issues.
 - Provide a single command to see the result (e.g., `npm run dev` → `http://localhost:3000/signup`)
 - Be specific about what to look for — not "check if it works" but "form should have email + password fields, submit button should be disabled until both are filled"
 - If user reports issues → spawn debugger to investigate, then re-implement
+
+### 1a. Acceptance Checkpoint
+
+**When:** A slice has one or more contracts with `**Verification:** verify` (or contracts without an explicit tier, which defaults to `verify`). This is the Step 6b gate in `/gl:slice`.
+
+**Trigger:** The effective verification tier for the slice is `verify`. See `references/verification-tiers.md` for tier resolution rules.
+
+**Rules:**
+- This checkpoint always pauses. It cannot be skipped, even in yolo mode.
+- The gate is blocking — the pipeline does not continue to Step 7 until the user approves.
+- Rejection feedback routes to the test writer first (see Step 6b rejection flow).
+
+**Format:**
+```
+ALL TESTS PASSING -- Slice {slice_id}: {slice_name}
+
+Please verify the output matches your intent.
+
+Acceptance criteria:
+  [ ] {criterion 1}
+  [ ] {criterion 2}
+
+Steps to verify:
+  1. {step 1}
+  2. {step 2}
+
+Does this match what you intended?
+  1) Yes -- mark complete and continue
+  2) No -- I'll describe what's wrong
+  3) Partially -- some criteria met, I'll describe the gaps
+```
+
+Full protocol: see Step 6b in `commands/gl/slice.md` and `references/verification-tiers.md`.
 
 ### 2. Decision Checkpoint (rare)
 
@@ -93,12 +128,12 @@ Type "done" when complete, or "skip" to continue without.
 
 ## Checkpoint Behaviour by Mode
 
-| Mode | Visual | Decision | External Action |
-|------|--------|----------|-----------------|
-| interactive | Pause and ask | Pause and ask | Pause and ask |
-| yolo | Skip (log warning) | Pause and ask | Pause and ask |
+| Mode | Visual (deprecated) | Acceptance | Decision | External Action |
+|------|---------------------|------------|----------|-----------------|
+| interactive | Pause and ask | Always pause | Pause and ask | Pause and ask |
+| yolo | Skip (log warning) | Always pause | Pause and ask | Pause and ask |
 
-**Even in YOLO mode, decisions and external actions always pause.** Only visual checks can be skipped — and they're logged so the user can review later.
+**Even in YOLO mode, Acceptance checkpoints always pause.** Acceptance checkpoints are blocking regardless of mode — they cannot be skipped. Only visual checks (deprecated) can be skipped in yolo mode — and they're logged so the user can review later.
 
 ## Anti-Patterns
 

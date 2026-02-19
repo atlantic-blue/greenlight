@@ -928,28 +928,15 @@ If ROADMAP.md doesn't exist, skip with warning.
 
 ---
 
-## Step 9: Visual Checkpoint (if applicable)
+## Step 9: Visual Checkpoint (deprecated — no-op)
 
-**Skip if `config.workflow.visual_checkpoint` is false.**
+> **Deprecation warning:** `visual_checkpoint` is deprecated. This step is a no-op. Human acceptance is now handled by the Acceptance checkpoint in Step 6b, which runs for all slices with a `verify` tier contract. If `config.workflow.visual_checkpoint` is `true`, log the following deprecation warning and skip this step:
+>
+> `"visual_checkpoint is deprecated. Use **Verification: verify** in your contracts instead. The Step 6b acceptance checkpoint now handles human review for all slice types."`
+>
+> See Step 6b and `references/verification-tiers.md` for the replacement protocol. No visual checkpoint is presented — proceed directly to Step 10.
 
-Only trigger if the slice has user-facing UI components (check contracts for UI/component boundaries).
-
-Follow `references/checkpoint-protocol.md`:
-
-```
-VISUAL CHECK
-
-What was built: {slice_name}
-
-How to verify:
-1. {command to start — e.g., npm run dev}
-2. Navigate to {URL}
-3. {what to look for — specific elements, behaviours}
-
-Type "approved" or describe issues.
-```
-
-If issues → spawn debugger to investigate, then re-implement.
+**This step is superseded by Step 6b (Verification Tier Gate).** Skip unconditionally.
 
 ---
 

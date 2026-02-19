@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/cli"
 )
 
-// buildTestFS returns an fstest.MapFS with all 34 manifest files.
+// buildTestFS returns an fstest.MapFS with all 35 manifest files.
 func buildTestFS() *fstest.MapFS {
 	manifestFiles := []string{
 		"agents/gl-architect.md",
@@ -45,6 +45,7 @@ func buildTestFS() *fstest.MapFS {
 		"references/circuit-breaker.md",
 		"references/deviation-rules.md",
 		"references/verification-patterns.md",
+		"references/verification-tiers.md",
 		"templates/config.md",
 		"templates/state.md",
 		"CLAUDE.md",
