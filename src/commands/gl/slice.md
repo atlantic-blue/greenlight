@@ -620,6 +620,102 @@ Locking-to-integration transition complete:
 
 ---
 
+## Step 6b: Verification Tier Gate
+
+**This gate runs after Step 6 (Verification) and Step 6a (Locking-to-Integration Transition). It is blocking — the pipeline does not continue to Step 7 until the gate passes. This applies even in yolo mode. Acceptance checkpoints always pause, regardless of workflow settings.**
+
+### 1. Read Verification Tiers
+
+For each contract in this slice, read the `**Verification:**` field.
+
+- Valid values: `auto` or `verify`
+- Missing field: default to `verify` (safe default)
+- If `visual_checkpoint` is set in config.json and is true → log a deprecation warning: `"visual_checkpoint is deprecated. Use **Verification: verify** in your contracts instead."` Treat the effective tier as if `verify` is set for backward compatibility.
+
+### 2. Compute Effective Tier
+
+Apply the rule: **verify > auto** (highest wins).
+
+If any contract has `**Verification:** verify`, the effective tier is `verify`.
+If all contracts have `**Verification:** auto`, the effective tier is `auto`.
+
+### 3. Execute Based on Effective Tier
+
+**If effective tier is `auto`:**
+
+```
+Log: "Verification tier: auto. Skipping acceptance checkpoint."
+```
+
+Proceed to Step 7.
+
+**If effective tier is `verify`:**
+
+Aggregate acceptance criteria from all contracts. Aggregate steps from all contracts. Present the checkpoint below and wait for a human response. The gate is blocking.
+
+### Checkpoint Format
+
+```
+ALL TESTS PASSING -- Slice {slice_id}: {slice_name}
+
+Please verify the output matches your intent.
+
+Acceptance criteria:
+  [ ] {criterion 1}
+  [ ] {criterion 2}
+
+Steps to verify:
+  1. {step 1}
+  2. {step 2}
+
+Does this match what you intended?
+  1) Yes -- mark complete and continue
+  2) No -- I'll describe what's wrong
+  3) Partially -- some criteria met, I'll describe the gaps
+```
+
+### Response Handling
+
+- `"1"` or `"Yes"` (case-insensitive) → approved → proceed to Step 7
+- Anything else → rejected → enter rejection flow (see below), increment rejection counter, re-run Step 6b
+
+### Format Adaptation Rules
+
+- If only criteria (no steps): show the `Acceptance criteria:` block; omit `Steps to verify:` entirely.
+- If only steps (no criteria): show the `Steps to verify:` block; omit `Acceptance criteria:` entirely.
+- Both present: show both blocks.
+- Neither present: use simplified prompt — `Does the output match your intent?` with the three response options only.
+
+### Rejection Flow
+
+When the user does not approve, present three options:
+
+```
+What would you like to do?
+
+1) Tighten tests — tests didn't cover the expected behaviour (return to test writer with behavioral feedback only)
+2) Revise contract — the contract didn't specify the intended outcome correctly
+3) Provide more detail — implementation is close, describe what needs to change
+```
+
+After remediation → re-run Step 6b.
+
+Increment the per-slice rejection counter. After 3 rejections, escalate:
+
+```
+Slice {slice_id} has been rejected {N} times.
+
+Summary of rejections:
+{list of what was found unsatisfactory}
+
+Options:
+A) Redesign the contract
+B) Split the slice
+C) Abandon and restart
+```
+
+---
+
 ## Step 7: Generate Summary and Update Documentation
 
 After verification passes, generate a summary and update project documentation.
