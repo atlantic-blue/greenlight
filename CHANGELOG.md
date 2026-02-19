@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/atlantic-blue/greenlight/compare/v1.4.0...v1.5.0) (2026-02-19)
+
+
+### Features
+
+* Circuit Breaker + Verification Gate ([#7](https://github.com/atlantic-blue/greenlight/issues/7)) ([87b8fd1](https://github.com/atlantic-blue/greenlight/commit/87b8fd12bb96337cf9cc435960e5c620f4607c68))
+
 # [1.4.0](https://github.com/atlantic-blue/greenlight/compare/v1.3.0...v1.4.0) (2026-02-09)
 
 
