@@ -131,7 +131,7 @@ graph TD
 | S-23 | Verification gate: Step 6b in /gl:slice | complete | 37 | 2026-02-19 | verify > auto resolution, one checkpoint per slice |
 | S-24 | Rejection flow: classification and TDD routing | complete | 48 | 2026-02-19 | Gap classification UX with test_gap/contract_gap/implementation_gap routing |
 | S-25 | Rejection counter: escalation at 3 | complete | 53 | 2026-02-19 | YAML state tracking, ESCALATION header with re-scope/pair/skip routing |
-| - | Documentation: CLAUDE.md, checkpoint, deprecation | pending | - | - | New references/verification-tiers.md, deprecate visual_checkpoint |
+| S-26 | Documentation: CLAUDE.md, checkpoint, deprecation | complete | 31 | 2026-02-19 | CLAUDE.md 5-line rule, Acceptance checkpoint type, manifest 34→35 |
 | - | Architect integration: tier generation guidance | pending | - | - | auto for infra, verify for everything else (default) |
 
 **Note:** Slice IDs and exact boundaries will be assigned by the architect during contract generation. The rows above represent logical groupings from the design, not final slices.
