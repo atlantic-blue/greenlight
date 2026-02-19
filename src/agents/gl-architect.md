@@ -205,6 +205,12 @@ interface [Name]Output {
 - Input validation: [specific rules]
 - Rate limit: [if applicable]
 
+**Verification:** auto | verify (default: verify)
+**Acceptance Criteria:**
+- [behavioral criterion the user can verify — describes what the user observes, not implementation details]
+**Steps:**
+- [actionable step to verify the feature, when how-to-verify is not obvious]
+
 **Dependencies:** [other contracts this requires to exist first]
 ```
 
@@ -213,6 +219,30 @@ interface [Name]Output {
 - **TypeScript projects:** Use TypeScript interfaces directly
 - **Python projects:** Use Python type hints or Pydantic models
 - **Other/mixed:** Use TypeScript-style notation as pseudocode — it's the most readable for contract definitions regardless of implementation language
+
+## Verification Tier Fields
+
+The three verification fields (**Verification:**, **Acceptance Criteria:**, **Steps:**) are optional. Contracts missing them are valid.
+
+**Field rules:**
+- `Verification`: Optional. Valid values: `auto` or `verify`. Default: `verify`.
+- `Acceptance Criteria`: Optional list under the `verify` tier. Items are behavioral statements — what the user observes when the feature works correctly.
+- `Steps`: Optional list under the `verify` tier. Items are actionable instructions (how-to-verify) — run X, open Y, click Z. Include these when how to verify is not obvious.
+- If `Verification` is `auto`, `Acceptance Criteria` and `Steps` are ignored.
+- Existing contracts without a verification field default to `verify`.
+
+**Errors and warnings:**
+- `InvalidTierValue`: verification field has a value other than `auto` or `verify`. Error: "Invalid verification tier: {value}. Must be auto or verify."
+- `EmptyVerifyCriteria`: tier is `verify` but both acceptance criteria and steps are empty. Warn: "Contract {name} has verify tier but no acceptance criteria or steps."
+
+**Invariants:**
+- Default tier is always `verify`
+- Existing contracts without verification field default to `verify`
+- The three fields are optional — contracts missing them are valid
+- Field names are exactly: Verification, Acceptance Criteria, Steps
+- `Acceptance Criteria` items are behavioral (what the user observes)
+- `Steps` items are actionable instructions (run X, open Y, click Z)
+- Fields are positioned after Security and before Dependencies
 
 </contract_format>
 

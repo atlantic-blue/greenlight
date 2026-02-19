@@ -244,6 +244,22 @@ grep -B5 "{route}" src/ | grep -i "auth\|protect\|guard\|middleware" 2>/dev/null
 - [ ] Add test for AccountLocked error state
 - [ ] Remove console.log from service.ts
 
+## Verification Tier
+
+Tier awareness is informational only — the verifier reports tier status but does not enforce the verification gate. The orchestrator enforces the checkpoint.
+
+Effective tier: {verify|auto}
+Computation rule: verify > auto (highest tier wins). If any contract has tier `verify`, the effective tier is `verify`.
+
+Per-contract tiers:
+- {contract_name}: {tier} — {criteria_count} criteria, {steps_count} steps
+
+Warnings (informational, not blocking — verifier still passes):
+- {contract_name}: verify tier with no acceptance criteria or steps
+
+**Missing verification field:** If a contract has no Verification field, it defaults to `verify`. Note: "defaulted to verify".
+**InvalidTierInContract:** If a contract has an unknown tier value, report as warning: "Unknown tier '{value}' on {contract}, treating as verify".
+
 ## Verdict
 
 **PASS** — Slice satisfies contracts with N warnings.
