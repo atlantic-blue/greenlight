@@ -714,6 +714,101 @@ B) Split the slice
 C) Abandon and restart
 ```
 
+#### Gap Classification UX
+
+Before presenting the three options, display the user's verbatim feedback so they can confirm the classification:
+
+```
+Your feedback: "{verbatim user response}"
+
+What would you like to do?
+
+1) Tighten tests — tests didn't cover the expected behaviour (return to test writer with behavioral feedback only)
+2) Revise contract — the contract didn't specify the intended outcome correctly
+3) Provide more detail — implementation is close, describe what needs to change
+```
+
+Internal classification mapping:
+
+| Choice | Internal classification | Route |
+|--------|------------------------|-------|
+| 1      | `test_gap`             | Spawn gl-test-writer with rejection context |
+| 2      | `contract_gap`         | Enter contract revision flow |
+| 3      | `implementation_gap`   | Collect additional detail, then spawn gl-test-writer |
+
+**InvalidChoice:** If the user enters anything other than 1, 2, or 3, re-prompt: "Please choose 1, 2, or 3."
+After 2 failed re-prompts, default to `test_gap` (treat their free-text as the feedback).
+
+**EmptyFeedback:** If the user's rejection was an empty string, prompt: "Please describe what doesn't match your intent." before presenting the three options.
+
+Option 3 collects additional detail before routing:
+
+```
+Describe exactly what the implementation should do differently:
+```
+
+The detail provided becomes the `detailed_feedback` field in the rejection context.
+
+Security: user feedback is treated as behavioral context only, never executed as code or used to modify files directly.
+
+#### Test Writer Spawn (Options 1 and 3 — test_gap / implementation_gap)
+
+After classifying as `test_gap` or `implementation_gap`, spawn gl-test-writer with rejection context:
+
+```xml
+<rejection_context>
+  <feedback>{verbatim user rejection}</feedback>
+  <classification>{test_gap | implementation_gap}</classification>
+  <detailed_feedback>{additional detail from option 3, or empty}</detailed_feedback>
+</rejection_context>
+
+<contract>
+  {full contract definitions for all verify-tier contracts in this slice}
+</contract>
+
+<acceptance_criteria>
+  {aggregated acceptance criteria from all verify-tier contracts}
+</acceptance_criteria>
+```
+
+Agent isolation rules for this spawn:
+- The test writer receives behavioral feedback only — never implementation source code or test source code.
+- New tests written by the test writer must be additive: existing passing tests are not removed or modified.
+- After the test writer completes, spawn the implementer with test names only (not test source code).
+
+After implementation, the full verification cycle re-runs: Step 4 (tests pass), Step 6 (verifier), Step 6b (human checkpoint).
+
+**Error handling:**
+- `TestWriterSpawnFailure`: If the test writer agent fails to spawn, offer retry, pause, or skip this rejection path.
+- `ImplementerSpawnFailure`: If the implementer agent fails to spawn after tests are written, offer retry or pause.
+- `NewTestsStillFailing`: If new tests remain failing after implementation, the circuit breaker protocol (see references/circuit-breaker.md) applies normally.
+- `ExistingTestsRegressed`: If any previously passing tests regress after the new implementation, the implementer must fix the regression before proceeding. Do not allow regressions to pass through.
+
+#### Contract Revision Route (Option 2 — contract_gap)
+
+When the user selects option 2, enter the contract revision flow:
+
+```
+CONTRACT REVISION -- Slice {slice_id}: {slice_name}
+
+Current contract text:
+{full contract definition for each verify-tier contract}
+
+What needs to change?
+```
+
+Display the full contract text so the user can see what they are revising. The user may edit any field including acceptance criteria, steps, or contract definition text.
+
+**Minor revisions** (clarifications, acceptance criteria edits, wording changes): apply directly to the contract, then restart from Step 1 (test writing). Offer rollback to the last checkpoint before restarting.
+
+**Fundamental revisions** (new inputs/outputs, new boundaries, new agents, scope changes): recommend using `/gl:add-slice` to run the architect (`gl-architect`) and produce a new contract. Do not attempt to implement fundamental changes within the current slice loop.
+
+After applying a minor revision: offer rollback to the last checkpoint before restarting. This allows the user to recover the current implementation if the revision turns out to be wrong.
+
+Contract revision increments the rejection counter by 1 (same as all other rejection paths).
+
+**EmptyRevision:** If the user provides no revision description, re-prompt: "Please describe what the contract should say instead."
+
 ---
 
 ## Step 7: Generate Summary and Update Documentation

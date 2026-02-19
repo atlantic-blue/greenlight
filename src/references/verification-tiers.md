@@ -94,9 +94,21 @@ The orchestrator presents three options to the user:
 
 1. **Tighten tests** — the tests did not adequately cover the expected behaviour. Return to the test writer (gl-test-writer) with behavioural feedback only.
 2. **Revise contract** — the contract did not accurately specify the intended outcome. Update the contract before retrying.
-3. **Provide more detail** — the implementation is close but needs adjustment. The user provides specific guidance; spawn a fresh implementer with that guidance as additional context.
+3. **Provide more detail** — the implementation is close but needs adjustment. The user provides specific guidance and additional detail; spawn a fresh implementer with that guidance as additional context.
 
 After the user selects an option and the remediation is performed, re-run Step 6b from the beginning (re-present the checkpoint after tests are green again).
+
+### Classification Mapping
+
+Each user choice maps to an internal classification:
+
+| Choice | Internal classification | Route |
+|--------|------------------------|-------|
+| 1      | `test_gap`             | Spawn gl-test-writer with rejection context |
+| 2      | `contract_gap`         | Enter contract revision flow; restart slice from Step 1 |
+| 3      | `implementation_gap`   | Collect additional detail from user, then spawn gl-test-writer |
+
+User feedback is treated as behavioral context only — it is never executed as code or used to modify files directly.
 
 ---
 
@@ -125,6 +137,8 @@ When the rejection flow routes to the test writer (option 1 — tighten tests), 
 This preserves the test writer's isolation. Sending implementation details would cause the test writer to test implementation rather than behaviour.
 
 The orchestrator is responsible for filtering the feedback before passing it to gl-test-writer. The test writer receives behavioral feedback only — never implementation source code or test source code.
+
+When the rejection flow then routes to the implementer (after the test writer has written new tests), the implementer receives test names only — not test source code. This preserves the implementer's isolation and ensures the implementer implements against the contract, not against the test internals.
 
 ---
 
