@@ -33,22 +33,22 @@ Mode: yolo
 | S-22 | Schema Extension | complete | 24 | 0 | none |
 | S-23 | Verification Gate | complete | 37 | 0 | S-22 |
 | S-24 | Rejection Flow | complete | 48 | 0 | S-23 |
-| S-25 | Rejection Counter | pending | 0 | 0 | S-23 |
+| S-25 | Rejection Counter | complete | 53 | 0 | S-23 |
 | S-26 | Documentation and Deprecation | pending | 0 | 0 | S-23 |
 | S-27 | Architect Integration | pending | 0 | 0 | S-22 |
 
-Progress: [████████████████████████░░] 24/27 slices
+Progress: [█████████████████████████░] 25/27 slices
 
 ## Current
 
 Milestone: verification-tiers
-Slice: S-24 — Rejection Flow
+Slice: S-25 — Rejection Counter
 Step: complete
-Last activity: 2026-02-19 — S-24 (Rejection Flow) complete, 48 tests passing
+Last activity: 2026-02-19 — S-25 (Rejection Counter) complete, 53 tests passing
 
 ## Test Summary
 
-Total: 565 passing, 0 failing, 0 security
+Total: 618 passing, 0 failing, 0 security
 Last run: 2026-02-19
 
 ## Decisions

@@ -130,7 +130,7 @@ graph TD
 | S-22 | Schema extension: contract verification fields | complete | 24 | 2026-02-19 | verification/acceptance_criteria/steps in contracts, default verify |
 | S-23 | Verification gate: Step 6b in /gl:slice | complete | 37 | 2026-02-19 | verify > auto resolution, one checkpoint per slice |
 | S-24 | Rejection flow: classification and TDD routing | complete | 48 | 2026-02-19 | Gap classification UX with test_gap/contract_gap/implementation_gap routing |
-| - | Rejection counter: escalation at 3 | pending | - | - | Per-slice counter, re-scope/pair/skip options |
+| S-25 | Rejection counter: escalation at 3 | complete | 53 | 2026-02-19 | YAML state tracking, ESCALATION header with re-scope/pair/skip routing |
 | - | Documentation: CLAUDE.md, checkpoint, deprecation | pending | - | - | New references/verification-tiers.md, deprecate visual_checkpoint |
 | - | Architect integration: tier generation guidance | pending | - | - | auto for infra, verify for everything else (default) |
 
