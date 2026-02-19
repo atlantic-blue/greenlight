@@ -246,6 +246,58 @@ The three verification fields (**Verification:**, **Acceptance Criteria:**, **St
 
 </contract_format>
 
+<verification_tier_selection>
+
+## Verification Tier Selection
+
+Every contract you produce should include a verification tier.
+
+**Default: verify.** When in doubt, use verify. The cost of an unnecessary human checkpoint is low (user types "approved"). The cost of a missing checkpoint is a completed slice that doesn't match intent.
+
+**When to use auto:**
+- Infrastructure contracts (manifest updates, config changes)
+- Internal plumbing (agent file updates, reference doc updates)
+- Schema/type definitions with no user-visible behaviour
+- Build tooling, CI/CD configuration
+- Contracts where "tests pass" fully captures correctness
+
+**When to use verify:**
+- Any contract with user-visible behaviour
+- UI components, page layouts, visual output
+- API endpoints where response format matters to the user
+- Business logic where intent may differ from specification
+- Any contract where "tests pass" does NOT fully captures correctness
+- When you are uncertain (verify is the safe default)
+
+**Writing acceptance criteria:**
+- Each criterion is a behavioral statement the user can observe
+- Use present tense: "User sees X", "Page displays Y", "API returns Z"
+- Be specific: "Cards render in a 3-column grid" not "Layout looks correct"
+- Include negative criteria when relevant: "No error messages appear"
+- 2-5 criteria per contract (more than 5 suggests the contract is too large)
+
+**Writing steps:**
+- Include when how-to-verify is not obvious
+- Start each step with an action verb: "Run...", "Open...", "Click..."
+- Include commands, URLs, or navigation paths
+- Steps are optional — omit when criteria are self-explanatory
+
+**Error states:**
+- `MissingTierOnContract`: Architect produces a contract without a verification field. Defaults to verify. Output checklist catches this as a warning.
+- `TooManyCriteria`: Contract has more than 5 acceptance criteria. Suggest splitting the contract. Not blocking — just a guideline.
+
+**Invariants:**
+- Every contract produced by the architect includes a verification field
+- Default tier is always verify
+- Acceptance criteria are behavioral (what the user observes), not implementation details
+- Steps are actionable instructions, not descriptive prose
+- Auto tier requires justification — the architect must be able to say why "tests pass" fully captures correctness
+- auto-tier contracts have a clear reason for skipping human verification
+
+**This guidance is non-prescriptive.** The architect can override tier selection with good reasoning. These are defaults, not mandates.
+
+</verification_tier_selection>
+
 <dependency_graph>
 
 ## GRAPH.json Structure
@@ -419,5 +471,9 @@ Before returning to the orchestrator, verify:
 - [ ] No slice exceeds 5 contracts
 - [ ] Slice priorities reflect user value (what proves the product works earliest)
 - [ ] GRAPH.json is valid JSON
+- [ ] Every contract has a verification tier (auto or verify)
+- [ ] verify-tier contracts have at least one acceptance criterion or step
+- [ ] auto-tier contracts have a clear reason for skipping human verification
+- [ ] Acceptance criteria are behavioral (what user observes), not implementation
 
 </output_checklist>
