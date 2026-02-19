@@ -114,16 +114,80 @@ User feedback is treated as behavioral context only — it is never executed as 
 
 ## 5. Rejection Counter
 
-The rejection counter is tracked **per-slice**.
+The rejection counter is tracked **per-slice**, not per-contract. It is in-memory only — not written to disk. It resets to 0 on every new `/gl:slice` execution (re-invoked). Within a single execution, the counter persists across all rejection loops.
 
-- Initialised at 0 when a slice starts.
-- Incremented by 1 for each rejection at Step 6b.
-- **Escalation at 3 rejections:** If the counter reaches 3 for a slice, the orchestrator pauses and escalates to the user with a full diagnostic:
-  - What has been tried
-  - What the user found unsatisfactory each time
-  - Options: redesign the contract, split the slice, abandon the slice
+### State Structure
 
-The counter resets only when the slice is abandoned and restarted from scratch, not when the slice loops through the rejection flow.
+Initialize this state at the start of each `/gl:slice` execution:
+
+```yaml
+slice_id: "{slice_id}"
+rejection_count: 0
+rejection_log: []
+```
+
+### Counter Invariants
+
+- Incremented by 1 for each rejection at Step 6b (every non-approved response).
+- **Escalation at 3 rejections:** When `rejection_count >= 3`, trigger escalation immediately.
+- Contract revision (option 2 — contract_gap) restarting from Step 1 does NOT reset the rejection counter. Every rejection path increments the same counter.
+- The rejection counter does not interact with the circuit breaker. They are separate concerns.
+
+### Log Entry Structure
+
+Each rejection appends one entry to `rejection_log` in chronological order:
+
+```yaml
+- attempt: {rejection_count}
+  feedback: "{verbatim user response}"
+  classification: "{test_gap | contract_gap | implementation_gap}"
+  action_taken: "{description of remediation taken}"
+```
+
+### Error Handling
+
+- `CounterOverflow`: If the counter exceeds 3 without triggering escalation, trigger escalation immediately and warn the user.
+- `LogCorruption`: If the rejection_log becomes inconsistent or corrupted, reset the log to `[]`, preserve the current rejection_count, and warn the user.
+
+### Escalation Format
+
+When `rejection_count` reaches 3, present:
+
+```
+ESCALATION -- {slice_name}
+
+This slice has been rejected 3 times. Continued iteration without intervention is unlikely to converge.
+
+Rejection history:
+  1. Feedback: "{verbatim feedback 1}" | Action: {action_taken_1}
+  2. Feedback: "{verbatim feedback 2}" | Action: {action_taken_2}
+  3. Feedback: "{verbatim feedback 3}" | Action: {action_taken_3}
+
+How would you like to proceed?
+
+  1) Re-scope — Reset the rejection counter and restart the slice from scratch
+  2) Pair — Collect step-by-step guidance, then spawn gl-test-writer; resets the rejection counter
+  3) Skip verification — Mark as auto-verified and proceed (does not reset the counter)
+
+Which option? (1/2/3)
+```
+
+**Option routing:**
+
+| Option | Action | Counter |
+|--------|--------|---------|
+| 1 (Re-scope) | Restart slice from scratch with revised scope | Reset to 0 |
+| 2 (Pair) | Collect guidance, spawn gl-test-writer | Reset to 0 |
+| 3 (Skip) | Mark as auto, proceed to Step 7 | Not reset |
+
+**Skip creates an explicit log entry:**
+```
+Verification skipped by user. Mismatch acknowledged and deferred.
+```
+
+**Error handling:**
+- `InvalidEscalationChoice`: If the user enters anything other than 1, 2, or 3, re-prompt: "Please choose 1, 2, or 3."
+- `EmptyRejectionLog`: If escalation triggers but the log is empty, display escalation without the rejection history block and warn that history is unavailable.
 
 ---
 

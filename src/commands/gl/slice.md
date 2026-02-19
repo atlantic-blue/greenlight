@@ -624,6 +624,35 @@ Locking-to-integration transition complete:
 
 **This gate runs after Step 6 (Verification) and Step 6a (Locking-to-Integration Transition). It is blocking — the pipeline does not continue to Step 7 until the gate passes. This applies even in yolo mode. Acceptance checkpoints always pause, regardless of workflow settings.**
 
+### Rejection Counter State
+
+Initialize the following in-memory state at the start of each `/gl:slice` execution. This state is in-memory only — it is not persisted to disk and resets on every new `/gl:slice` invocation.
+
+```yaml
+slice_id: "{slice_id}"
+rejection_count: 0
+rejection_log: []
+```
+
+The counter is per-slice, not per-contract. It persists across all rejection loops within a single `/gl:slice` execution. Contract revision (option 2) does NOT reset the counter — every rejection path increments the same counter regardless of which option the user selects.
+
+**Counter does not interact with the circuit breaker.** The circuit breaker tracks implementation attempt failures; this counter tracks human acceptance rejections. They are separate concerns with separate thresholds.
+
+**Escalation threshold:** When `rejection_count >= 3`, trigger escalation immediately (see Escalation section below). The threshold of 3 matches the circuit breaker per-test threshold for system-wide consistency.
+
+**Error handling:**
+- `CounterOverflow`: If the counter somehow exceeds 3 without triggering escalation, trigger escalation immediately and warn the user that the counter overflowed.
+- `LogCorruption`: If the rejection_log becomes inconsistent or corrupted, reset the log to `[]`, preserve the current rejection_count, and warn the user.
+
+**Log entry structure:** Each rejection appends one entry to `rejection_log` in chronological order:
+
+```yaml
+- attempt: {rejection_count}
+  feedback: "{verbatim user response}"
+  classification: "{test_gap | contract_gap | implementation_gap}"
+  action_taken: "{description of remediation taken}"
+```
+
 ### 1. Read Verification Tiers
 
 For each contract in this slice, read the `**Verification:**` field.
@@ -700,19 +729,43 @@ What would you like to do?
 
 After remediation → re-run Step 6b.
 
-Increment the per-slice rejection counter. After 3 rejections, escalate:
+Increment the per-slice rejection counter (rejection_count += 1) and append a log entry. After 3 rejections (rejection_count >= 3), trigger escalation immediately.
+
+#### Escalation Format
+
+When escalation triggers, present the following to the user:
 
 ```
-Slice {slice_id} has been rejected {N} times.
+ESCALATION -- {slice_name}
 
-Summary of rejections:
-{list of what was found unsatisfactory}
+This slice has been rejected 3 times. Continued iteration without intervention is unlikely to converge.
 
-Options:
-A) Redesign the contract
-B) Split the slice
-C) Abandon and restart
+Rejection history:
+  1. Feedback: "{verbatim feedback 1}" | Action: {action_taken_1}
+  2. Feedback: "{verbatim feedback 2}" | Action: {action_taken_2}
+  3. Feedback: "{verbatim feedback 3}" | Action: {action_taken_3}
+
+How would you like to proceed?
+
+  1) Re-scope — Reset the rejection counter and restart the slice from scratch with a revised scope or contract
+  2) Pair — Collect step-by-step guidance from you, then spawn gl-test-writer with that guidance; resets the rejection counter
+  3) Skip verification — Mark this slice as auto-verified and proceed to Step 7 (does not reset the counter)
+
+Which option? (1/2/3)
 ```
+
+**Option routing:**
+
+- **Option 1 (Re-scope):** Reset the rejection counter to 0 and restart the slice from scratch. The user provides revised scope or contract intent before restarting.
+- **Option 2 (Pair):** Collect detailed step-by-step guidance from the user, then spawn gl-test-writer with that guidance as context. Reset the rejection counter to 0 after spawning.
+- **Option 3 (Skip verification):** Mark the slice effective tier as auto and proceed to Step 7. Does not reset the rejection counter. Log the explicit acknowledgment:
+  ```
+  Verification skipped by user. Mismatch acknowledged and deferred.
+  ```
+
+**Error handling:**
+- `InvalidEscalationChoice`: If the user enters anything other than 1, 2, or 3, re-prompt: "Please choose 1, 2, or 3."
+- `EmptyRejectionLog`: If escalation triggers but the rejection log is empty (due to LogCorruption recovery), display the escalation without the rejection history block and warn in the log that history is unavailable.
 
 #### Gap Classification UX
 
