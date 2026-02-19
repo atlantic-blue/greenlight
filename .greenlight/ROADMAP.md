@@ -121,7 +121,7 @@ graph TD
 
 **Summary:** 4 slices, 41 additional tests (456 total). Circuit breaker stops death spirals with structured diagnostics, scope lock, rollback, and manual override.
 
-## Milestone: verification-tiers [planning]
+## Milestone: verification-tiers [complete]
 
 **Goal:** Close the gap between "tests pass" and "user got what they asked for." Add per-contract verification tiers (auto/verify), human acceptance gates after verification, rejection-to-TDD routing, and escalation. When tests pass but output doesn't match intent, the user catches it before the slice is marked complete.
 
@@ -132,9 +132,9 @@ graph TD
 | S-24 | Rejection flow: classification and TDD routing | complete | 48 | 2026-02-19 | Gap classification UX with test_gap/contract_gap/implementation_gap routing |
 | S-25 | Rejection counter: escalation at 3 | complete | 53 | 2026-02-19 | YAML state tracking, ESCALATION header with re-scope/pair/skip routing |
 | S-26 | Documentation: CLAUDE.md, checkpoint, deprecation | complete | 31 | 2026-02-19 | CLAUDE.md 5-line rule, Acceptance checkpoint type, manifest 34→35 |
-| - | Architect integration: tier generation guidance | pending | - | - | auto for infra, verify for everything else (default) |
+| S-27 | Architect integration: tier generation guidance | complete | 60 | 2026-02-19 | Verification Tier Selection section + 4 output checklist items |
 
-**Note:** Slice IDs and exact boundaries will be assigned by the architect during contract generation. The rows above represent logical groupings from the design, not final slices.
+**Summary:** 6 slices, 253 additional tests (710 total). Verification tiers close the gap between "tests pass" and "user got what they asked for."
 
 ## Milestone: cli-hardening [planning]
 
