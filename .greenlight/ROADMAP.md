@@ -1,7 +1,7 @@
 # Product Roadmap
 
 Project: greenlight
-Updated: 2026-02-18
+Updated: 2026-02-19
 
 ## Architecture
 
@@ -23,7 +23,7 @@ graph TD
     subgraph Embedded["Embedded Content (src/)"]
         Agents["agents/*.md<br/>(10 agent definitions)"]
         Commands["commands/gl/*.md<br/>(17 command definitions)"]
-        References["references/*.md<br/>(4 reference docs)"]
+        References["references/*.md<br/>(5 reference docs)"]
         Templates["templates/*.md<br/>(2 templates)"]
         ClaudeMD["CLAUDE.md<br/>(engineering standards)"]
     end
@@ -108,18 +108,31 @@ graph TD
 
 **Summary:** 10 slices, 187 additional tests (415 total). Full brownfield support and documentation system.
 
-## Milestone: circuit-breaker [planning]
+## Milestone: circuit-breaker [complete]
 
 **Goal:** Prevent implementer death spirals with automatic attempt tracking, structured diagnostics, scope lock, manual override (/gl-debug), and rollback via git tags. When the implementer gets stuck, it stops early, reports clearly, and the user can recover in minutes instead of losing hours.
 
 | Slice | Description | Status | Tests | Completed | Key Decision |
 |-------|-------------|--------|-------|-----------|--------------|
-| - | Attempt tracker + diagnostic report | pending | - | - | Per-test (3) + slice ceiling (7), structured markdown fields |
-| - | Scope lock | pending | - | - | Inferred from contracts, optional GRAPH.json override |
-| - | Rollback integration | pending | - | - | Lightweight git tags, cleanup at slice completion |
-| - | /gl-debug command | pending | - | - | Standalone diagnostic, structured for future pause/resume |
-| - | CLAUDE.md + manifest integration | pending | - | - | 5-line hard rule + references/circuit-breaker.md |
-| - | End-to-end verification | pending | - | - | Full flow: track, trip, diagnose, rollback, retry, pass |
+| S-18 | Circuit breaker protocol and implementer integration | complete | 14 | 2026-02-18 | Per-test (3) + slice ceiling (7), structured diagnostic fields |
+| S-19 | Checkpoint/rollback and scope lock | complete | 12 | 2026-02-18 | Lightweight git tags, inferred scope from contracts |
+| S-20 | /gl-debug command and CLAUDE.md rule | complete | 8 | 2026-02-18 | Standalone diagnostic, 5-line hard rule in CLAUDE.md |
+| S-21 | Manifest integration and end-to-end verification | complete | 7 | 2026-02-18 | +2 manifest entries, full flow verified |
+
+**Summary:** 4 slices, 41 additional tests (456 total). Circuit breaker stops death spirals with structured diagnostics, scope lock, rollback, and manual override.
+
+## Milestone: verification-tiers [planning]
+
+**Goal:** Close the gap between "tests pass" and "user got what they asked for." Add per-contract verification tiers (auto/verify), human acceptance gates after verification, rejection-to-TDD routing, and escalation. When tests pass but output doesn't match intent, the user catches it before the slice is marked complete.
+
+| Slice | Description | Status | Tests | Completed | Key Decision |
+|-------|-------------|--------|-------|-----------|--------------|
+| S-22 | Schema extension: contract verification fields | complete | 24 | 2026-02-19 | verification/acceptance_criteria/steps in contracts, default verify |
+| - | Verification gate: Step 6b in /gl:slice | pending | - | - | verify > auto resolution, one checkpoint per slice |
+| - | Rejection flow: classification and TDD routing | pending | - | - | Routes through test writer first, behavioral feedback only |
+| - | Rejection counter: escalation at 3 | pending | - | - | Per-slice counter, re-scope/pair/skip options |
+| - | Documentation: CLAUDE.md, checkpoint, deprecation | pending | - | - | New references/verification-tiers.md, deprecate visual_checkpoint |
+| - | Architect integration: tier generation guidance | pending | - | - | auto for infra, verify for everything else (default) |
 
 **Note:** Slice IDs and exact boundaries will be assigned by the architect during contract generation. The rows above represent logical groupings from the design, not final slices.
 

@@ -30,20 +30,26 @@ Mode: yolo
 | S-19 | Checkpoint Tags + Rollback | complete | 8 | 0 | S-18 |
 | S-20 | Debug Command | complete | 8 | 0 | S-18 |
 | S-21 | Infrastructure Integration | complete | 8 | 0 | S-18, S-20 |
+| S-22 | Schema Extension | complete | 24 | 0 | none |
+| S-23 | Verification Gate | pending | 0 | 0 | S-22 |
+| S-24 | Rejection Flow | pending | 0 | 0 | S-23 |
+| S-25 | Rejection Counter | pending | 0 | 0 | S-23 |
+| S-26 | Documentation and Deprecation | pending | 0 | 0 | S-23 |
+| S-27 | Architect Integration | pending | 0 | 0 | S-22 |
 
-Progress: [█████████████████████] 21/21 slices
+Progress: [██████████████████████░░░░] 22/27 slices
 
 ## Current
 
-Milestone: circuit-breaker
-Slice: S-21 — Infrastructure Integration
+Milestone: verification-tiers
+Slice: S-22 — Schema Extension
 Step: complete
-Last activity: 2026-02-18 — S-21 complete, circuit-breaker milestone complete
+Last activity: 2026-02-19 — S-22 (Schema Extension) complete, 24 tests passing
 
 ## Test Summary
 
-Total: 456 passing, 0 failing, 0 security
-Last run: 2026-02-18
+Total: 480 passing, 0 failing, 0 security
+Last run: 2026-02-19
 
 ## Decisions
 
@@ -64,6 +70,13 @@ Last run: 2026-02-18
 - D-20: Diagnostic report as structured fields rendered as markdown
 - D-21: Slice ceiling at 7 total failures
 - D-22: Checkpoint tags cleaned up at slice completion
+- D-23: Rejection feedback isolation (behavioral only, no impl details)
+- D-24: Tier resolution: verify > auto, one checkpoint per slice
+- D-25: visual_checkpoint deprecated, tiers in contracts supersede
+- D-26: Rejection counter per-slice, escalation at 3
+- D-27: Gap classification via actionable options
+- D-28: New references/verification-tiers.md file
+- D-29: Two tiers (auto/verify) not three
 
 ## Blockers
 
@@ -71,5 +84,5 @@ None
 
 ## Session
 
-Last session: 2026-02-18
+Last session: 2026-02-19
 Resume file: None
