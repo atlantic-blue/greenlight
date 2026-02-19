@@ -1,28 +1,30 @@
-# System Design: Circuit Breaker Module
+# System Design: Verification Tiers
 
 > **Project:** Greenlight
-> **Scope:** Add circuit breaker module to prevent implementer death spirals -- attempt tracking, structured diagnostics, scope lock, manual override (`/gl-debug`), and rollback via git tags.
-> **Stack:** Go 1.24, stdlib only. Deliverables are embedded markdown content plus two manifest entries.
-> **Date:** 2026-02-18
-> **Replaces:** Previous DESIGN.md (brownfield-and-docs -- complete, 415 tests passing)
+> **Scope:** Add verification tier system to close the gap between "tests pass" and "user got what they asked for" -- per-contract verification levels (auto/verify), human acceptance gates, rejection-to-TDD routing, and escalation.
+> **Stack:** Go 1.24, stdlib only. Deliverables are embedded markdown content plus one manifest entry.
+> **Date:** 2026-02-19
+> **Replaces:** Previous DESIGN.md (circuit-breaker -- complete, 456 tests passing)
 
 ---
 
 ## 1. Problem Statement
 
-When the Greenlight implementer gets stuck on a failing test, it loops endlessly -- guessing at root causes, compounding bad changes, and eventually inventing phantom problems that don't exist. Real users lose full days to this. There is no detection mechanism, no structured diagnostic output, no rollback capability, and no manual pull cord.
+Tests pass but output doesn't match user intent. The current system has a blind spot: after the verifier confirms contract coverage and test results, the slice is marked complete -- but "tests pass" doesn't mean "the user got what they asked for." The system is marking its own homework.
 
-**Real-world example:** A user asked the implementer to redesign campaign visualization from bars to card headers. After multiple attempts, the agent started claiming "the app was defaulting to stream view instead of calendar view" -- a fabricated root cause unrelated to the slice. Fresh slices, new contracts, and mockups all failed to break the cycle because the agent has no self-awareness that it's stuck.
+**Real-world failure mode:** User asks for a card-based campaign visualization. Tests pass (component renders, data flows, assertions pass). But the actual output is a table with card styling -- not the card layout the user intended. The verifier sees tests passing and marks the slice complete. The user only discovers the mismatch later.
 
 ### Current State Gap
 
-The implementer's `<error_recovery>` section (gl-implementer.md lines 146-181) has a rudimentary "know when to stop" instruction: after 3 targeted attempts, document and report. This is:
+The existing `/gl:slice` pipeline (Step 6 verification + Step 9 visual checkpoint) has four gaps:
 
-1. **Aspirational, not enforced.** No state tracking structure -- the implementer is told to count, but there's no mechanism ensuring it does.
-2. **No diagnostic format.** "Document what you've tried" produces inconsistent, unhelpful output.
-3. **No rollback.** After 3 bad attempts, the codebase is full of debris with no clean state to return to.
-4. **No scope awareness.** Nothing prevents the agent from modifying unrelated files when it starts grasping at straws.
-5. **No manual override.** The user has to wait for the agent to finish spiraling -- no pull cord.
+1. **No human verification for non-UI slices.** The `visual_checkpoint` toggle only triggers for UI slices. Business logic, API behavior, and data processing slices skip human verification entirely. Tests pass and the slice is marked complete.
+
+2. **Visual checkpoint is binary.** It either runs or it doesn't. There is no middle ground between "automated verification only" and "user must run the app and look at it." A structured acceptance review (checking criteria without running the app) is not supported.
+
+3. **No rejection-to-TDD loop.** When the visual checkpoint surfaces a mismatch, the orchestrator spawns a debugger. This breaks TDD discipline -- the correct response is to write a test that captures the user's intent, then make the implementer pass it.
+
+4. **No escalation on repeated rejection.** If the user keeps rejecting, the system keeps looping. There is no circuit-breaker equivalent for human verification -- no threshold where the system acknowledges "this slice needs re-scoping."
 
 ---
 
@@ -30,46 +32,52 @@ The implementer's `<error_recovery>` section (gl-implementer.md lines 146-181) h
 
 ### 2.1 Functional Requirements
 
-**FR-1: Attempt Tracking.** The implementer must track every attempt per test per slice. State includes: slice_id, test_name, attempt_count, files touched per attempt, description of each attempt, and last known green reference (checkpoint tag).
+**FR-1: Per-Contract Verification Tier.** Every contract has a `verification` field with value `auto` or `verify`. Default is `verify`. The tier determines what happens after tests pass and the verifier approves.
 
-**FR-2: Auto-Trip at 3 Per-Test Failures.** After 3 failed attempts on any single test, the circuit trips automatically. The implementer stops coding and switches to diagnostic mode. This is mandatory, not optional.
+**FR-2: Auto Tier Behavior.** When all contracts in a slice are tier `auto`, the slice proceeds directly from verification (Step 6) to summary/docs (Step 7). No human checkpoint. This is the current default behavior, preserved for infrastructure, config, and internal plumbing slices.
 
-**FR-3: Slice-Level Ceiling at 7 Total Failures.** If total failed attempts across ALL tests in a slice exceed 7, the circuit trips regardless of per-test counts. This catches the pattern where the agent redistributes failures across different tests without making real progress.
+**FR-3: Verify Tier Behavior.** When any contract in a slice has tier `verify`, the orchestrator presents a structured checkpoint combining acceptance criteria and optional steps. The user confirms the output matches intent or describes what doesn't match. This subsumes the existing `visual_checkpoint` functionality.
 
-**FR-4: Structured Diagnostic Report.** When the circuit trips, the implementer produces a structured diagnostic report in a prescribed format. The report includes: what the test expects, what actually happens (exact error output), an attempt log with files touched, cumulative file modifications, scope violations, best hypothesis, specific question for the user, and recovery options.
+**FR-4: Tier Resolution.** A slice's effective verification tier is the highest tier among all its contracts: `verify` > `auto`. Acceptance criteria and steps from all `verify` contracts are aggregated into a single checkpoint. One approval per slice.
 
-**FR-5: Scope Lock with Justify-or-Stop.** Before modifying any file, the implementer checks if it's within the slice's inferred scope (derived from contracts). Out-of-scope modifications require explicit, one-sentence justification tied to the current failing test. Unjustifiable out-of-scope touches count as scope violations and failed attempts.
+**FR-5: Rejection Flow to Test Writer.** When the user rejects (anything other than "approved"), the orchestrator collects the feedback, presents structured options that implicitly classify the gap (test gap, implementation gap, or contract gap), and routes accordingly:
+- Test gap or implementation gap: spawn test writer with rejection feedback (behavioral, no implementation details), contract, and acceptance criteria. New tests written, then implementer makes them pass.
+- Contract gap: present to user for contract revision, then restart slice.
 
-**FR-6: Manual Override (/gl-debug).** A standalone command the user can run at any time to force the diagnostic report immediately, without waiting for 3 attempts. Reads current state, produces the diagnostic, and presents it. Does not control the pipeline.
+**FR-6: Rejection Counter with Escalation.** Track rejections per slice. After 3 rejections on the same slice, trigger escalation with options: re-scope the slice, pair with user for detailed guidance, or skip verification (mark as auto and proceed with known mismatch).
 
-**FR-7: Rollback via Lightweight Git Tags.** Before the implementer's first attempt on any test, a lightweight git tag is created as a checkpoint. On circuit break, the diagnostic report includes the exact rollback command. After human input and counter reset, the implementer starts from the tagged clean state.
+**FR-7: Contract Schema Extension.** Add three optional fields to the contract format: `verification` (auto/verify, default verify), `acceptance_criteria` (list of behavioral criteria), `steps` (list of steps to verify, optional). If `verification` is `verify`, warn if both `acceptance_criteria` and `steps` are empty. If `verification` is `auto`, `acceptance_criteria` and `steps` are ignored.
 
-**FR-8: Counter Reset on Human Input.** When the user provides guidance after a circuit break, the per-test counter for the affected test resets to 0. The slice-level accumulator also resets. The implementer rolls back to the checkpoint and tries again with the user's input as additional context.
+**FR-8: Backward Compatibility.** Contracts without an explicit `verification` field default to `verify`. The existing `config.workflow.visual_checkpoint` toggle is deprecated with a warning -- tiers in contracts supersede it.
 
 ### 2.2 Non-Functional Requirements
 
-**NFR-1: Zero Go Code for Protocol.** The circuit breaker protocol is entirely embedded content (markdown files in `src/`). The only Go change is adding the new command and reference to the installer manifest.
+**NFR-1: Zero Go Code for Protocol.** The verification tier protocol is entirely embedded content (markdown files in `src/`). The only Go change is adding the new reference file to the installer manifest.
 
-**NFR-2: Context Budget.** The circuit breaker reference document must be concise enough that loading it does not push the implementer agent past the 50% context threshold. Target: under 200 lines.
+**NFR-2: Context Budget.** The verification tiers reference document must be concise enough that loading it does not push the orchestrator agent past the 30% context threshold. Target: under 150 lines.
 
-**NFR-3: Structured Data First.** The diagnostic report is conceptually structured data rendered as markdown, not markdown that happens to contain data. Field names are consistent and machine-parseable, enabling future integration with pause/resume and automated tooling.
+**NFR-3: Agent Isolation Preserved.** The test writer receives the user's rejection feedback verbatim (behavioral description), the contract, and acceptance criteria. No implementation code, no test source code from the current cycle. The implementer still receives test names only.
+
+**NFR-4: Checkpoint Consistency.** Verification tier checkpoints follow the same format patterns as existing checkpoint types (Visual, Decision, External Action, Circuit Break) in `references/checkpoint-protocol.md`.
 
 ### 2.3 Constraints
 
 - Go 1.24, stdlib only. No external dependencies.
 - All content embedded via `go:embed` from `src/` directory.
-- Must integrate with existing agent isolation rules (implementer cannot see test source code).
-- Must not break existing 415 tests.
-- Must preserve existing deviation rules protocol -- circuit breaker is additive, not a replacement.
+- Must integrate with existing agent isolation rules.
+- Must not break existing 456 tests.
+- Must preserve existing circuit breaker protocol -- verification tiers are additive.
+- Must preserve existing deviation rules protocol.
+- Rejection routing must go through the test writer first (TDD-correct approach).
 
 ### 2.4 Out of Scope
 
-- **Automated debugging.** The circuit breaker stops and reports; it does not attempt to fix. The existing debugger agent handles investigation when the user routes to it.
-- **Cross-slice learning.** The circuit breaker does not learn from previous slice failures. Each slice starts fresh.
-- **UI/dashboard.** No visual interface for circuit breaker state. Output is markdown in the terminal.
-- **Automatic re-routing to debugger.** The user decides whether to route to the debugger, re-scope, or retry. Future work could automate this.
-- **Test modification.** The circuit breaker never suggests or performs test changes. Tests are the source of truth.
-- **Configurable thresholds.** 3 per-test and 7 per-slice are fixed. Configurability deferred until real-world data calibrates the right defaults.
+- **Automated acceptance detection.** The system does not auto-detect whether acceptance criteria are met. A human decides.
+- **Screenshot comparison.** No visual diffing or pixel-level verification. Human eyes only.
+- **Partial approval.** The user approves or rejects the entire slice checkpoint, not individual criteria. Future work could support per-criterion approval.
+- **Rejection history persistence.** Rejection feedback is passed to the test writer in the current cycle. It is not persisted to `.greenlight/` for cross-session reference. Future work could save rejection history.
+- **Configurable rejection threshold.** 3 rejections per slice is fixed. Matches the circuit breaker's per-test threshold. Configurability deferred until real-world data calibrates the right default.
+- **AI-assisted gap classification.** The orchestrator presents options to the user. It does not use AI to auto-classify the gap type. The user's choice is the classification.
 
 ---
 
@@ -77,14 +85,17 @@ The implementer's `<error_recovery>` section (gl-implementer.md lines 146-181) h
 
 | # | Decision | Chosen | Rejected | Rationale |
 |---|----------|--------|----------|-----------|
-| 1 | Scope lock source | Inferred from contracts (default) with optional `files_in_scope` override in GRAPH.json | Manual allowlist maintained by architect; Pure inference with no override | Contracts define what you're building -- scope is inferrable (component, types, service, styles, parent for wiring). Optional override handles edge cases (shared utility, config file) without architect busywork. |
-| 2 | Attempt counter granularity | Per-test tracking with slice-level ceiling (7 total failures) | Per-test only; Per-slice only | Per-test catches single-test spirals. Slice ceiling catches failure redistribution where agent appears to make progress but just breaks different things each time. |
-| 3 | Rollback mechanism | Lightweight git tags (`greenlight/checkpoint/{slice_id}`) | Git commits with checkpoint prefix; Git stash | Tags give a named, findable reference to a known-good state without polluting commit history. Easy to create, find, roll back to, and clean up when done. Stashes are a stack, unnamed by default, and get lost. |
-| 4 | /gl-debug integration level | Standalone diagnostic command, architecturally designed for future pause/resume integration | Integrated with /gl:pause pipeline; Full pipeline controller | Simplicity now. /gl-debug reads state, produces report, user decides. Structured report format enables future automation without redesign. |
-| 5 | CLAUDE.md integration pattern | 5-line hard rule in CLAUDE.md + full protocol in `references/circuit-breaker.md` | Full protocol in CLAUDE.md (~50 lines); Brief reference only in CLAUDE.md | Follows existing deviation-rules.md pattern. Keeps CLAUDE.md focused on universal standards. Full protocol with examples lives in reference doc. Hard rule in CLAUDE.md ensures compliance -- agents cannot claim ignorance. |
-| 6 | Diagnostic report structure | Structured fields with consistent naming, rendered as markdown | Free-form markdown; JSON output | Structured data rendered as markdown is human-readable now and machine-parseable later. Field names like `slice`, `test`, `trip_reason`, `recovery_options` can be extracted programmatically for future tooling. |
-| 7 | Slice-level ceiling threshold | 7 total failures across all tests | 5 (too aggressive -- trips on 2 tests); 10 (too permissive -- 3+ tests fully exhausted) | With 3 attempts per test, 7 means the agent has failed on at least 3 different tests (or exhausted one and partially exhausted others). Enough signal that the problem is systemic, not isolated. |
-| 8 | Tag cleanup timing | Tags cleaned up at slice completion (Step 10 of /gl:slice) | Immediately after test passes; Never cleaned up | Keeping tags until slice completion means rollback is always available if a later test's fix breaks an earlier test. Cleaning at completion keeps the tag namespace tidy. |
+| 1 | Verification tier count | Two tiers: `auto` and `verify` | Three tiers (auto/review/demo) -- the distinction between review and demo is artificial. In both cases the user opens the app, looks at output, and confirms intent. The contract author doesn't need to choose between "check a list" and "walk through steps." | Simpler is better. One decision: "Can tests alone capture my intent for this slice?" Two tiers, not three. |
+| 2 | Default verification tier | `verify` -- forgetting to set a tier gives a human checkpoint | `auto` (current behavior, but unsafe) | Safe default. Forgetting to annotate a contract gives you human verification, not silent auto-approve. The cost of an unnecessary verify checkpoint is low (user types "approved"). The cost of a missing checkpoint is a completed slice that doesn't match intent. |
+| 3 | Tier location | In the contract, not in GRAPH.json or config.json | GRAPH.json (per-slice only, loses contract granularity); config.json (global only, no per-boundary control) | The contract is the source of truth for what a boundary does and how it's verified. Tier is a property of the boundary, not the build graph or the project config. |
+| 4 | Rejection routing | Always through test writer first, even for implementation gaps | Direct to implementer with "fix this" instructions; Direct to debugger | TDD-correct. If the implementation is wrong and tests pass, the tests weren't tight enough. Adding a test that specifically asserts the user's intent, then making the implementer pass it, is the right fix. The implementer never gets "fix this" -- they get new failing tests. |
+| 5 | Tier resolution across contracts | Highest tier wins + aggregation. verify > auto. One checkpoint per slice. | Per-contract checkpoints (too many interruptions); Per-slice config only (loses contract granularity) | Minimizes user interruptions. A slice with mixed tiers gets the highest tier with all criteria aggregated. |
+| 6 | Rejection counter scope | Per-slice, escalation at 3 | Per-contract (each contract gets 3 rejections independently) | A slice is the unit of work. If a user has rejected 3 times, the whole slice needs re-scoping. Mirrors the circuit breaker's slice-level ceiling concept. |
+| 7 | Gap classification UX | Orchestrator presents actionable options that implicitly map to gap types | Ask user to classify directly ("Is this a test gap?"); Auto-classify with heuristics | Users should not need to understand Greenlight's internal taxonomy. Present options like "tighten the tests," "revise the contract," or "provide more detail." The user picks what feels right; the orchestrator routes. |
+| 8 | Rejection feedback to test writer | User's verbatim behavioral feedback + contract + acceptance criteria. No implementation details. | Include implementation code (breaks isolation); Include test source (breaks TDD) | Preserves agent isolation. The user's rejection is behavioral ("I expected X, I got Y"). The test writer uses this behavioral description plus the contract to write tighter tests. No implementation leakage. |
+| 9 | visual_checkpoint backward compatibility | Deprecate with warning. Tiers in contracts supersede it. Keep in config but ignore. | Remove from config (breaking change); Add new config field (unnecessary -- tiers live in contracts) | The default `verify` tier already provides human verification for all non-auto slices. The `visual_checkpoint` toggle is redundant. Deprecation with warning is the cleanest migration path. |
+| 10 | New reference file | New `references/verification-tiers.md` (follows circuit-breaker.md pattern) | Extend `references/verification-patterns.md` (different concerns -- automated vs human) | Existing verification-patterns.md covers automated verification (stubs, wiring, test quality). Verification tiers cover human acceptance. Different concerns, different audiences. |
+| 11 | Verify checkpoint content | Combined: `acceptance_criteria` (what to check) + `steps` (how to check, optional) under one tier | Separate review and demo tiers with different required fields | The user does the same thing in both cases: look at the output and confirm intent. Criteria describe what to verify. Steps describe how, when the how isn't obvious. Both optional but warn if neither present. |
 
 ---
 
@@ -92,285 +103,268 @@ The implementer's `<error_recovery>` section (gl-implementer.md lines 146-181) h
 
 ### 4.1 Component Overview
 
-The circuit breaker is five components distributed across existing system files plus two new files:
+The verification tier system is five components distributed across existing system files plus one new file:
 
 ```
 src/
-  CLAUDE.md                          # +5 lines: hard rule reference
+  CLAUDE.md                          # +4 lines: hard rule reference
   references/
-    circuit-breaker.md               # NEW: full protocol (~180 lines)
-                                     #   - attempt tracking rules
-                                     #   - diagnostic report format
-                                     #   - scope lock rules
-                                     #   - rollback protocol
-                                     #   - good vs bad examples
+    verification-tiers.md            # NEW: full protocol (~130 lines)
+                                     #   - tier definitions and defaults
+                                     #   - verify checkpoint format
+                                     #   - rejection flow
+                                     #   - rejection counter + escalation
+                                     #   - gap classification routing
+    checkpoint-protocol.md           # MODIFY: add Acceptance checkpoint type
+                                     #   deprecate Visual, update mode table
+    verification-patterns.md         # MODIFY: add cross-reference to tiers
   agents/
-    gl-implementer.md                # REWRITE: <error_recovery> replaced
-                                     #   with circuit breaker integration
+    gl-architect.md                  # MODIFY: add verification/acceptance_criteria/
+                                     #   steps to contract format
+    gl-verifier.md                   # MODIFY: report tier in verification output
   commands/
     gl/
-      debug.md                       # NEW: /gl-debug command definition
-      slice.md                       # MODIFY: checkpoint tagging before
-                                     #   implementation, handle diagnostic
-                                     #   output, tag cleanup at completion
+      slice.md                       # MODIFY: add Step 6b (verification tier gate)
+                                     #   modify Step 9 (deprecate, reference tiers)
+                                     #   add rejection flow handling
+  templates/
+    config.md                        # MODIFY: deprecation note on visual_checkpoint
 
 internal/
   installer/
-    installer.go                     # +2 manifest entries:
-                                     #   "commands/gl/debug.md"
-                                     #   "references/circuit-breaker.md"
+    installer.go                     # +1 manifest entry:
+                                     #   "references/verification-tiers.md"
 ```
 
-### 4.2 Component 1: Attempt Tracker
+### 4.2 Component 1: Verification Tier Gate (Step 6b)
 
-**Lives in:** `references/circuit-breaker.md` (protocol) + `gl-implementer.md` (integration)
+**Lives in:** `commands/gl/slice.md` (new step) + `references/verification-tiers.md` (protocol)
 
-The implementer maintains attempt state as a mental model. The state structure:
+After Step 6 (verification passes) and Step 6a (locking-to-integration transition, if applicable), the orchestrator reads the verification tier for each contract in the slice and resolves the effective tier.
+
+**Tier resolution:**
 
 ```
-Circuit Breaker State:
-  slice_id: {from orchestrator input}
-  checkpoint_tag: greenlight/checkpoint/{slice_id}
-  per_test_attempts:
-    {test_name}:
-      count: N
-      changes:
-        - attempt: 1
-          files_touched: [path1, path2]
-          description: "Added UserService with email validation"
-          error: "expected 409, got 500: missing unique constraint check"
-        - attempt: 2
-          ...
-  total_slice_failures: N
-  scope_violations: [{file, justification, test_name, verdict}]
+For each contract in the slice:
+  Read contract.verification (default: "verify")
+
+Effective tier = highest tier among all contracts:
+  verify > auto
+
+If effective tier is auto:
+  Skip to Step 7 (summary/docs)
+
+If effective tier is verify:
+  Aggregate acceptance_criteria from all verify contracts
+  Aggregate steps from all verify contracts
+  Present Verify Checkpoint
+  Wait for user response
 ```
 
-On each test failure:
-1. Increment `per_test_attempts[test_name].count`
-2. Record `{attempt_number, files_touched, description_of_change, exact_error}`
-3. Increment `total_slice_failures`
-4. Check trip conditions: `per_test count >= 3` OR `total_slice_failures >= 7`
-5. If tripped: **stop coding immediately**, produce diagnostic report
+### 4.3 Component 2: Verify Checkpoint
 
-The orchestrator (`/gl:slice`) passes attempt history when spawning a fresh implementer after counter reset, so the fresh agent knows what was already tried and does not repeat the same approaches.
+**Lives in:** `references/verification-tiers.md`
 
-### 4.3 Component 2: Diagnostic Report Generator
+Format presented to the user:
 
-**Lives in:** `references/circuit-breaker.md`
+```
+ALL TESTS PASSING — Slice {slice_id}: {slice_name}
 
-When the circuit trips (auto or manual), the implementer produces this exact format:
+Please verify the output matches your intent.
+
+Acceptance criteria:
+  [ ] {criterion 1 from contract A}
+  [ ] {criterion 2 from contract A}
+  [ ] {criterion 3 from contract B}
+
+Steps to verify:
+  1. {step 1 from contract A}
+  2. {step 2 from contract A}
+  3. {step 3 from contract B}
+
+Does this match what you intended?
+  1) Yes — mark complete and continue
+  2) No — I'll describe what's wrong
+  3) Partially — some criteria met, I'll describe the gaps
+```
+
+If only criteria exist, show criteria. If only steps exist, show steps. If both exist, show both. If neither exists (shouldn't happen due to validation warning, but handle gracefully), just ask "Does the output match your intent?"
+
+### 4.4 Component 3: Rejection Flow
+
+**Lives in:** `references/verification-tiers.md` (protocol) + `commands/gl/slice.md` (orchestrator integration)
+
+When the user types anything other than "Yes" (option 1):
+
+1. **Capture feedback.** Store the user's verbatim response.
+
+2. **Present classification options.** The orchestrator presents:
+
+```
+Your feedback: "{user's response}"
+
+How should we address this?
+
+1) Tighten the tests -- the tests aren't specific enough to catch this mismatch
+   (routes to: test writer adds more precise assertions, then implementer passes them)
+
+2) Revise the contract -- the contract doesn't capture what I actually want
+   (routes to: you update the contract, then the slice restarts)
+
+3) Provide more detail -- I'll describe exactly what I expect
+   (routes to: test writer uses your detail to write targeted tests, then implementer passes them)
+
+Which option? (1/2/3)
+```
+
+3. **Route based on choice:**
+
+| Choice | Internal classification | Action |
+|--------|----------------------|--------|
+| 1 (tighten tests) | Test gap | Spawn test writer with: rejection feedback (verbatim), contract, acceptance criteria. Test writer adds/tightens tests. Then spawn implementer to pass them. Re-run verification tier gate. |
+| 2 (revise contract) | Contract gap | Present contract to user for revision. User edits acceptance criteria or contract definition. Restart slice from Step 1. |
+| 3 (provide detail) | Implementation gap | Collect detailed description from user. Spawn test writer with: detailed description, rejection feedback, contract, acceptance criteria. Test writer writes targeted tests. Then spawn implementer. Re-run verification tier gate. |
+
+4. **Increment rejection counter.** After any rejection, increment the per-slice rejection count.
+
+### 4.5 Component 4: Rejection Counter and Escalation
+
+**Lives in:** `references/verification-tiers.md`
+
+The orchestrator tracks rejections per slice:
+
+```yaml
+slice_id: S-{N}
+rejection_count: 0          # Increments on each non-"approved" response
+rejection_log:
+  - feedback: "{user's words}"
+    classification: "test_gap"
+    action_taken: "spawned test writer with feedback"
+  - feedback: "{user's words}"
+    classification: "implementation_gap"
+    action_taken: "spawned test writer with detailed description"
+```
+
+When `rejection_count` reaches 3:
+
+```
+ESCALATION: {slice_name}
+
+This slice has been rejected 3 times. The verification criteria may not match
+what the contracts and tests can deliver.
+
+Rejection history:
+1. "{feedback 1}" -> {action taken}
+2. "{feedback 2}" -> {action taken}
+3. "{feedback 3}" -> {action taken}
+
+Options:
+1) Re-scope -- the contract is fundamentally wrong. Revise contracts and restart.
+2) Pair -- provide detailed, step-by-step guidance for exactly what you want.
+3) Skip verification -- mark this slice as auto-verified and proceed.
+   (The mismatch is acknowledged but deferred.)
+
+Which option? (1/2/3)
+```
+
+### 4.6 Component 5: Contract Schema Extension
+
+**Lives in:** `agents/gl-architect.md` (contract format addition)
+
+Three new optional fields added after the Security section in the contract format:
 
 ```markdown
-## Circuit Breaker Tripped
+**Verification:** verify
+**Acceptance Criteria:**
+- User can see campaign cards in a grid layout
+- Each card shows campaign name, status, and key metric
+- Cards are clickable and navigate to campaign detail
 
-**Slice:** {slice_id} -- {slice_name}
-**Test:** {test_name}
-**Trip reason:** {per-test limit (3/3) | slice ceiling (N/7)}
-
-### What the test expects
-{Exact assertion from test name and contract -- not interpretation}
-
-### What actually happens
-{Exact error output -- copy/paste, no summarizing}
-
-### Attempts log
-1. **{description}** -> files: [{list}] -> result: {exact error}
-2. **{description}** -> files: [{list}] -> result: {exact error}
-3. **{description}** -> files: [{list}] -> result: {exact error}
-
-### Files modified (cumulative)
-| File | Change Type | Attempts |
-|------|-------------|----------|
-| {path} | created | 1, 2 |
-| {path} | modified | 1, 2, 3 |
-
-### Scope violations
-| File | Justification Given | Test | Verdict |
-|------|---------------------|------|---------|
-| {path} | {reason} | {test} | justified / violation |
-
-{Or: "None"}
-
-### Best hypothesis
-{One clear hypothesis based on the pattern across attempts. Derived from
-what changed between attempts and how the error shifted. Not a guess.}
-
-### What I need from you
-{Specific question or decision. Must be answerable. Examples:
-  - "Is the contract correct? The test expects X but the component API provides Y."
-  - "Should this component own its own state or receive it as props?"
-  - "The error suggests a dependency on {file} -- should I modify it?"
-NOT: "help me" or "I'm stuck" or "I don't know what's wrong"}
-
-### Recovery options
-- [ ] Roll back to checkpoint: `git checkout greenlight/checkpoint/{slice_id}`
-- [ ] Provide guidance and reset counter (I'll retry with your input)
-- [ ] Re-scope this slice (the contract may need adjustment)
-- [ ] Skip this test and continue with remaining tests
+**Steps:**
+- Run `npm run dev` and open localhost:3000
+- Navigate to /campaigns
+- Verify cards render in a 3-column grid
 ```
 
-### 4.4 Component 3: Scope Lock
-
-**Lives in:** `references/circuit-breaker.md` (rules) + `gl-implementer.md` (enforcement)
-
-Before modifying any file, the implementer performs scope inference:
-
-**In-scope (no justification needed):**
-- Files directly implied by the contract (the component, its types, its service, its styles)
-- Files in the same directory/module as contract entities
-- Files explicitly listed in `files_in_scope` in GRAPH.json (if present)
-
-**Requires justification (one sentence, must reference current failing test):**
-- Parent components (to pass props or wire up)
-- Shared utilities referenced by contract entities
-- Configuration files needed for new functionality
-
-**Automatic scope violation -- do NOT proceed:**
-- Routing changes for a UI component slice
-- Database schema changes not in the contract
-- Unrelated view/page modifications
-- Global state changes not implied by the contract
-- Any file where the justification references concerns outside the current slice
-
-The heuristic: **if you cannot explain, in one sentence tied to the current failing test, why modifying this file makes that test pass, do not touch it.**
-
-When a scope violation is detected:
-1. Log it in the attempt record
-2. Count it as a failed attempt
-3. Do NOT make the change
-4. If this triggers the circuit breaker, include it in the diagnostic report
-
-### 4.5 Component 4: /gl-debug Command
-
-**Lives in:** `commands/gl/debug.md` (new file)
-
-Standalone diagnostic command. No pipeline integration.
-
-**Trigger:** User runs `/gl-debug` at any time during implementation.
-
-**Behavior:**
-1. Read `.greenlight/STATE.md` to determine current slice and step
-2. Read current git status and recent commits
-3. Run the test suite to capture current failures
-4. Gather whatever attempt data is available from the current conversation context
-5. Produce the diagnostic report format (same as Component 2) with available data
-6. Present to user
-7. Done -- user decides next action
-
-**What it does NOT do:**
-- Modify any files
-- Reset any counters
-- Interact with the /gl:slice pipeline
-- Spawn other agents
-- Create or delete git tags
-
-**Design for future:** The report uses the same structured format as the auto-trip report. A future version could write this to `.continue-here.md` for `/gl:resume` integration.
-
-### 4.6 Component 5: Rollback Integration
-
-**Lives in:** `commands/gl/slice.md` (modifications to Steps 3 and 10)
-
-**Before implementation (new sub-step in Step 3 of /gl:slice):**
-
-```bash
-# Create checkpoint tag before implementer starts
-git tag greenlight/checkpoint/{slice_id}
-```
-
-If the tag already exists (resumed slice or retry), verify it points to a clean state and skip re-tagging.
-
-**On circuit break:**
-
-The diagnostic report includes the rollback command:
-```
-Roll back to checkpoint: git checkout greenlight/checkpoint/{slice_id}
-```
-
-**On counter reset (user provides input after circuit break):**
-
-The orchestrator:
-1. Rolls back to the checkpoint: `git checkout greenlight/checkpoint/{slice_id}`
-2. Spawns a fresh implementer with:
-   - The user's guidance as additional context
-   - The diagnostic report as "what was already tried" (so the agent doesn't repeat approaches)
-   - Reset counters (per-test = 0, slice total = 0)
-3. Re-tags if the rollback moved HEAD
-
-**On slice completion (added to Step 10 of /gl:slice):**
-
-```bash
-# Clean up checkpoint tags for this slice
-git tag -d greenlight/checkpoint/{slice_id} 2>/dev/null
-```
+Field rules:
+- `verification`: Optional. Values: `auto`, `verify`. Default: `verify`.
+- `acceptance_criteria`: Optional under `verify`. List of behavioral statements the user can verify. Warn if empty when tier is `verify`.
+- `steps`: Optional under `verify`. List of steps the user runs to verify the feature. Include when the how-to-verify isn't obvious. Warn if both `acceptance_criteria` and `steps` are empty when tier is `verify`.
 
 ### 4.7 CLAUDE.md Addition
 
-Added to `src/CLAUDE.md` after the "Deviation Rules" section:
+Added to `src/CLAUDE.md` after the "Circuit Breaker" section:
 
 ```markdown
-## Circuit Breaker Protocol
-
-**MANDATORY.** The implementer MUST follow `references/circuit-breaker.md`. No exceptions.
-Count every attempt. Stop at 3 per test or 7 per slice. Produce the structured diagnostic.
-Justify every out-of-scope file touch. Roll back to checkpoint on reset.
-This protocol is not optional and cannot be overridden by any agent.
+### Verification Tiers
+- Every contract has a verification tier: `auto` or `verify` (default)
+- After tests pass and verifier approves, the tier gate determines if human acceptance is required
+- Rejection feedback routes to the test writer first -- if the implementation is wrong, the tests weren't tight enough
+- Full protocol: `references/verification-tiers.md`
 ```
 
 ---
 
 ## 5. Data Model
 
-No database entities. No persistent state files. The circuit breaker operates within:
+No database entities. No persistent state files beyond what the orchestrator already maintains. The verification tier system operates within:
 
 | Storage | What | Lifetime |
 |---------|------|----------|
-| Agent mental state | Attempt counters, scope tracking, file touch log | Single agent spawn (not persisted between spawns) |
-| Git tags | `greenlight/checkpoint/{slice_id}` | Created before implementation, deleted at slice completion |
-| Orchestrator context | Attempt history passed to fresh implementer spawns | Single /gl:slice execution |
-| Diagnostic report | Markdown output | Displayed to user (ephemeral, optionally saved by user) |
+| Contract fields | verification, acceptance_criteria, steps | Permanent (in CONTRACTS.md) |
+| Orchestrator context | Rejection count, rejection log, effective tier | Single /gl:slice execution |
+| User feedback | Verbatim rejection text | Passed to test writer, then discarded |
+| Checkpoint output | Verify checkpoint markdown | Displayed to user (ephemeral) |
 
 ---
 
 ## 6. Integration with Existing Systems
 
-### 6.1 Agent Isolation (CLAUDE.md)
-
-No changes to agent isolation rules. The implementer still cannot see test source code. The circuit breaker works with test names and error output only.
-
-The agent isolation table gains no new rows. `gl-debugger` already has full read access -- when the user routes a circuit-break diagnostic to the debugger, the debugger can investigate without restriction.
-
-### 6.2 Deviation Rules (references/deviation-rules.md)
-
-Circuit breaker is additive to deviation rules, not a replacement:
-
-- **Rules 1-3 (auto-fix)** still apply. If the implementer encounters a bug, missing functionality, or blocker, it fixes immediately per deviation rules.
-- **Rule 4 (architectural stop)** still takes priority. An architectural issue stops execution before the circuit breaker can trip.
-- **Circuit breaker** catches a different failure mode: the agent is stuck on a test, not encountering a deviation. It's trying to implement correctly but failing. Deviation rules handle unplanned work; circuit breaker handles unproductive work.
-
-### 6.3 Checkpoint Protocol (references/checkpoint-protocol.md)
-
-The circuit-break diagnostic is a new checkpoint type. It fits alongside the existing types:
-
-| Checkpoint Type | Trigger | When to Pause |
-|-----------------|---------|---------------|
-| Visual | UI slice needs human eyes | interactive mode only |
-| Decision | Rule 4 architectural stop | always |
-| External Action | Human action needed outside Claude | always |
-| **Circuit Break** | **3 per-test or 7 per-slice failures** | **always** |
-
-Circuit break checkpoints always pause, even in yolo mode. A stuck agent cannot self-recover.
-
-### 6.4 Existing /gl:slice Pipeline
+### 6.1 /gl:slice Pipeline
 
 Changes to the pipeline:
 
-| Step | Current | After Circuit Breaker |
-|------|---------|----------------------|
-| Step 3 (Implement) | Spawn implementer, handle pass/fail | Add: create checkpoint tag before spawn |
-| Step 3 failure handling | "Max 3 implementation attempts, then pause" | Replace: circuit breaker diagnostic report, user chooses recovery option |
-| Step 10 (Complete) | Update state, final report, suggest next | Add: clean up checkpoint tags |
+| Step | Current | After Verification Tiers |
+|------|---------|--------------------------|
+| Step 6 (Verification) | Verifier checks contract coverage, stubs, wiring | Unchanged -- verifier also reports tier from contracts |
+| Step 6b (NEW) | Does not exist | Verification tier gate: resolve tier, present checkpoint if verify, handle approval/rejection |
+| Step 7 (Summary/docs) | Runs after verification passes | Runs after verification tier gate passes (approval received or tier is auto) |
+| Step 9 (Visual checkpoint) | Reads config.workflow.visual_checkpoint | Deprecated -- log warning if visual_checkpoint is true, reference verification tiers instead |
 
-The existing "max 3 implementation attempts" at the orchestrator level is superseded by the circuit breaker's per-test and slice-level tracking. The orchestrator no longer needs its own retry counter -- the implementer self-reports when it's stuck.
+### 6.2 Circuit Breaker (references/circuit-breaker.md)
+
+No interaction. The circuit breaker handles implementation death spirals (Step 3). Verification tiers handle post-verification human acceptance (Step 6b). They operate on different steps in the pipeline and track different counters (attempt_count vs rejection_count).
+
+### 6.3 Checkpoint Protocol (references/checkpoint-protocol.md)
+
+The checkpoint type table gains one new type:
+
+| Checkpoint Type | Trigger | When to Pause |
+|-----------------|---------|---------------|
+| Visual | ~~UI slice needs human eyes~~ Deprecated -- use verify tier | interactive mode only |
+| Decision | Rule 4 architectural stop | always |
+| External Action | Human action needed outside Claude | always |
+| Circuit Break | 3 per-test or 7 per-slice failures | always |
+| **Acceptance** | **Slice verification tier is verify** | **always (even in yolo mode)** |
+
+Acceptance checkpoints always pause, even in yolo mode. The whole point of verification tiers is human confirmation -- skipping it defeats the purpose.
+
+### 6.4 Agent Isolation (CLAUDE.md)
+
+No changes to the isolation table. The test writer already cannot see implementation code. The rejection feedback is behavioral (user's words about what they expected vs. what they observed). The implementer still receives test names only.
+
+### 6.5 Deviation Rules (references/deviation-rules.md)
+
+No interaction. Deviation rules handle unplanned work during implementation. Verification tiers handle post-implementation acceptance. The rejection flow spawns agents through the normal /gl:slice pipeline, which already integrates deviation rules.
+
+### 6.6 gl-verifier Agent
+
+The verifier gains awareness of verification tiers:
+- Read the `verification` field from each contract
+- Include the effective tier in the verification report
+- Flag contracts that are missing both `acceptance_criteria` and `steps` when tier is `verify`
+
+This is informational -- the verifier reports tier status, it does not enforce the gate. The orchestrator enforces the gate.
 
 ---
 
@@ -378,15 +372,18 @@ The existing "max 3 implementation attempts" at the orchestrator level is supers
 
 | File | Change | Lines Added/Modified |
 |------|--------|---------------------|
-| `src/references/circuit-breaker.md` | **NEW** | ~180 lines |
-| `src/commands/gl/debug.md` | **NEW** | ~80 lines |
-| `src/agents/gl-implementer.md` | Rewrite `<error_recovery>` section | ~40 lines replaced |
-| `src/commands/gl/slice.md` | Add checkpoint tag creation (Step 3) and cleanup (Step 10) | ~25 lines added |
-| `src/CLAUDE.md` | Add Circuit Breaker Protocol section | 5 lines added |
-| `internal/installer/installer.go` | Add 2 manifest entries | 2 lines added |
-| `internal/installer/manifest_docs_test.go` | Update manifest count in tests | ~2 lines modified |
+| `src/references/verification-tiers.md` | **NEW** | ~130 lines |
+| `src/commands/gl/slice.md` | Add Step 6b, modify Step 9, add rejection handling | ~80 lines added/modified |
+| `src/agents/gl-architect.md` | Add verification/acceptance_criteria/steps to contract format | ~25 lines added |
+| `src/agents/gl-verifier.md` | Add tier awareness to verification report | ~15 lines added |
+| `src/references/checkpoint-protocol.md` | Add Acceptance checkpoint type, deprecate Visual, update mode table | ~20 lines modified |
+| `src/references/verification-patterns.md` | Add cross-reference to verification-tiers.md | ~5 lines added |
+| `src/templates/config.md` | Add deprecation note on visual_checkpoint | ~5 lines added |
+| `src/CLAUDE.md` | Add Verification Tiers rule | 4 lines added |
+| `internal/installer/installer.go` | Add 1 manifest entry | 1 line added |
+| `internal/installer/manifest_docs_test.go` | Update manifest count in tests | ~1 line modified |
 
-**Total new content:** ~260 lines of markdown, 4 lines of Go.
+**Total new content:** ~280 lines of markdown, 2 lines of Go.
 
 ---
 
@@ -394,29 +391,29 @@ The existing "max 3 implementation attempts" at the orchestrator level is supers
 
 These are logical groupings for the architect to refine into slices with contracts:
 
-1. **Attempt Tracker + Diagnostic Report** -- Core protocol in `references/circuit-breaker.md` and `gl-implementer.md` rewrite. This is the foundation everything else depends on.
+1. **Schema Extension** -- Add `verification`, `acceptance_criteria`, `steps` fields to the contract format in `gl-architect.md`. Update the contract format template. Update `gl-verifier.md` to report tier in verification output. This is the foundation -- contracts must support tiers before anything else.
 
-2. **Scope Lock** -- Add scope inference and justification rules to the circuit breaker reference and implementer agent. Depends on the attempt tracker (scope violations count as failed attempts).
+2. **Verification Gate** -- Add Step 6b to `/gl:slice`. Read tier from contracts, resolve effective tier (verify > auto, aggregation), present Verify checkpoint, handle "approved" response. Simple gate -- no rejection handling yet. Create `references/verification-tiers.md` with tier definitions and checkpoint format.
 
-3. **Rollback Integration** -- Modify `/gl:slice` to create checkpoint tags before implementation and clean up at completion. Depends on the attempt tracker (rollback happens on circuit break).
+3. **Rejection Flow** -- Handle non-"approved" responses in the verification gate. Present structured classification options. Route to test writer (with behavioral feedback, contract, acceptance criteria) or to user for contract revision. Resume TDD loop after new tests.
 
-4. **/gl-debug Command** -- New standalone command. Depends on the diagnostic report format being defined (shares the same format).
+4. **Rejection Counter** -- Track rejections per slice. Increment on each rejection. Escalation at 3 with options: re-scope, pair, skip. Add escalation format to `references/verification-tiers.md`.
 
-5. **CLAUDE.md + Manifest Integration** -- Add the hard rule to CLAUDE.md, add manifest entries to installer.go, update tests. Final slice that ties everything together.
+5. **Documentation and Deprecation** -- Update `CLAUDE.md` with verification tier rule. Update `references/checkpoint-protocol.md` with Acceptance checkpoint type and Visual deprecation. Update `references/verification-patterns.md` with cross-reference. Add deprecation note to `templates/config.md` for `visual_checkpoint`. Modify Step 9 of `/gl:slice` to log deprecation warning.
 
-6. **End-to-End Verification** -- Verify the full circuit breaker flow works: implementer tracks attempts, trips at 3, produces diagnostic, user provides input, rollback to tag, fresh implementer with guidance, test passes.
+6. **Architect Integration** -- Update `gl-architect.md` to generate `acceptance_criteria` and `steps` from requirements. Add guidance for tier selection: `auto` for pure data/logic/infrastructure, `verify` for everything else (it's the default anyway). Update `gl-designer.md` to capture verification preferences during design sessions.
 
 ---
 
 ## 9. Security
 
-No new security surface. The circuit breaker:
+No new security surface. The verification tier system:
 - Does not expose any external interfaces
-- Does not handle user input beyond the existing slash command pattern
+- Does not handle user input beyond the existing slash command and "approved"/free-text response pattern
 - Does not store credentials or sensitive data
-- Git tags are local only (not pushed to remote unless user explicitly pushes tags)
+- Does not modify agent isolation boundaries
 
-The scope lock component has a **positive security effect**: it prevents the implementer from making unauthorized changes to files outside the slice boundary, reducing the blast radius of implementation errors.
+The rejection flow has a **positive security property**: it prevents auto-completion of slices that may have security-relevant behavioral mismatches. A user reviewing acceptance criteria may catch issues that automated tests miss (e.g., "the API returns sensitive fields that shouldn't be visible").
 
 ---
 
@@ -424,11 +421,12 @@ The scope lock component has a **positive security effect**: it prevents the imp
 
 | Item | Why Deferred | When to Revisit |
 |------|-------------|-----------------|
-| Automated debugger routing | Adds pipeline complexity; user decision after circuit break is valuable signal | After circuit breaker has real-world usage data showing users always route to debugger |
-| /gl-debug + /gl:pause integration | Need structured report format stable first | Next milestone after circuit-breaker |
-| Cross-slice failure learning | Requires persistent state between slices; unclear value | When users report recurring failure patterns across slices |
-| Configurable thresholds (3/7) | May not be right for all projects; need calibration data | After 20+ real-world circuit breaks provide calibration data |
-| Diagnostic report persistence | Currently ephemeral; could save to `.greenlight/diagnostics/` | When users request history of circuit breaks for post-mortem analysis |
+| Partial approval (per-criterion) | Adds UX complexity; one approval per slice is simpler and sufficient for MVP | When users report needing granular approval on large slices |
+| Rejection history persistence | Currently ephemeral per-slice execution; no cross-session need identified | When users request post-mortem analysis of rejection patterns |
+| AI-assisted gap classification | Orchestrator presents options, user chooses; AI classification adds unreliable complexity | When classification accuracy can be measured against user choices |
+| Configurable rejection threshold (3) | Need real-world data to calibrate; matches circuit breaker threshold for consistency | After 20+ real-world rejections provide calibration data |
+| Screenshot/visual diffing | Requires tooling outside Go CLI scope; human eyes are more reliable for MVP | When visual regression testing tools are integrated |
+| Tier inference from contract content | Could auto-suggest verify for UI contracts, auto for infra | When architect consistently forgets to set tiers |
 
 ---
 
@@ -436,8 +434,14 @@ The scope lock component has a **positive security effect**: it prevents the imp
 
 | # | Gray Area | Decision | Rationale |
 |---|-----------|----------|-----------|
-| 1 | Scope lock source | Inferred from contracts (default) with optional `files_in_scope` override in GRAPH.json | Contracts define what you're building; scope is inferrable. Optional override handles edge cases without architect busywork. |
-| 2 | Attempt counter granularity | Per-test with slice-level ceiling (7) | Per-test catches single-test spirals. Slice ceiling catches failure redistribution. Both failure modes covered. |
-| 3 | Rollback mechanism | Lightweight git tags | Named reference to known-good state. Zero commit history pollution. Easy to create, find, roll back to, and clean up. |
-| 4 | /gl-debug integration | Standalone now, structured for future pause/resume integration | Simple pull cord. Structured report format enables future automation without redesign. |
-| 5 | CLAUDE.md integration | 5-line hard rule in CLAUDE.md + full protocol in references/circuit-breaker.md | Follows existing deviation-rules.md pattern. CLAUDE.md stays lean. Hard rule ensures compliance. |
+| 1 | Tier count | Two tiers: `auto` and `verify`. No `demo` or `review` distinction. | The distinction between "check a list" and "walk through steps" is artificial. Both involve looking at output and confirming intent. Two tiers, one decision: "Can tests alone capture intent?" |
+| 2 | Default tier | `verify` -- forgetting to set a tier gives a human checkpoint, not auto-approve | Safe default. The cost of an unnecessary verify is low. The cost of a missing verify is a completed slice that doesn't match intent. |
+| 3 | Tier location | In the contract, not in GRAPH.json or config.json | The contract is the source of truth for what a boundary does and how it's verified. |
+| 4 | Rejection routing | Always through test writer first, even for implementation gaps | TDD-correct. If the implementation is wrong and tests pass, the tests weren't tight enough. |
+| 5 | Tier resolution | Highest tier wins + aggregation. verify > auto. One checkpoint per slice. | Minimizes user interruptions. A slice with mixed tiers gets the highest tier with all criteria aggregated. |
+| 6 | Rejection counter | Per-slice, escalation at 3. | A slice is the unit of work. Mirrors the circuit breaker's slice-level ceiling. |
+| 7 | visual_checkpoint deprecation | Keep in config but deprecate with warning. Tiers in contracts supersede it. | Default `verify` tier already provides human verification. The toggle is redundant but harmless. |
+| 8 | Rejection feedback isolation | Test writer receives user's verbatim behavioral feedback, contract, and acceptance criteria. No implementation details. | Preserves agent isolation. User's words are about behavior, not implementation. |
+| 9 | Gap classification UX | Orchestrator presents actionable options that implicitly map to gap types. User picks; orchestrator routes. | Users should not need to understand Greenlight's internal taxonomy. |
+| 10 | Reference file location | New `references/verification-tiers.md` following the circuit-breaker.md pattern. | Different concern from existing verification-patterns.md. Automated vs human verification are separate topics. |
+| 11 | Verify checkpoint content | Combined: `acceptance_criteria` + `steps` under one tier. Criteria = what to check. Steps = how, when not obvious. Both optional but warn if neither present. | Eliminates the artificial review/demo split. One checkpoint format handles both structured acceptance and interactive demos. |

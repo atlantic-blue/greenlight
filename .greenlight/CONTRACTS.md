@@ -27,6 +27,20 @@
 | C-14 | RunUninstall | CLI -> Command handler | S-06 |
 | C-15 | CLIRun | User -> CLI dispatcher | S-07 |
 | C-16 | EntryPoint | OS -> main | S-07 |
+| C-62 | ContractSchemaExtension | gl-architect.md -> Contract format (verification fields) | S-22 |
+| C-63 | VerifierTierAwareness | gl-verifier.md -> Verification report (tier reporting) | S-22 |
+| C-64 | VerificationTiersProtocol | Reference doc -> Orchestrator + agents (verification tier rules) | S-23 |
+| C-65 | VerificationTierGate | /gl:slice orchestrator -> Verification tier gate (Step 6b) | S-23 |
+| C-66 | VerifyCheckpointPresentation | /gl:slice orchestrator -> User (acceptance checkpoint) | S-23 |
+| C-67 | RejectionClassification | /gl:slice orchestrator -> User (gap classification UX) | S-24 |
+| C-68 | RejectionToTestWriter | /gl:slice orchestrator -> gl-test-writer (rejection feedback) | S-24 |
+| C-69 | RejectionToContractRevision | /gl:slice orchestrator -> User (contract revision route) | S-24 |
+| C-70 | RejectionCounter | /gl:slice orchestrator -> Per-slice rejection tracking | S-25 |
+| C-71 | RejectionEscalation | /gl:slice orchestrator -> User (escalation at 3 rejections) | S-25 |
+| C-72 | CLAUDEmdVerificationTierRule | CLAUDE.md -> All agents (verification tier hard rule) | S-26 |
+| C-73 | CheckpointProtocolAcceptanceType | checkpoint-protocol.md -> Acceptance checkpoint type | S-26 |
+| C-74 | ManifestVerificationTiersUpdate | Go CLI -> Manifest (1 new file path) | S-26 |
+| C-75 | ArchitectTierGuidance | gl-architect.md -> Tier selection guidance and acceptance criteria generation | S-27 |
 
 ---
 
@@ -3433,3 +3447,1168 @@ Invariants:
 | 3. Implementer justifies every out-of-scope file modification | S-18 | C-54, C-55, C-56 | Scope lock protocol + implementer enforcement |
 | 4. User can force a diagnostic at any time with /gl-debug | S-20, S-21 | C-59, C-61 | Debug command + manifest entry |
 | 5. Implementer rolls back to clean checkpoint state after human provides input | S-19 | C-57, C-58 | Checkpoint tags + rollback integration |
+
+---
+
+## Verification Tiers Milestone
+
+---
+
+## S-22: Schema Extension
+
+*User Actions:*
+- *1. Architect can set a verification tier (auto/verify) on each contract, with verify as the default*
+
+### C-62: ContractSchemaExtension
+
+```
+Contract: ContractSchemaExtension
+Boundary: gl-architect.md -> Contract format (three new optional fields)
+Slice: S-22 (Schema Extension)
+Design refs: FR-7, DESIGN.md 4.6
+
+FILE UPDATE: src/agents/gl-architect.md — Extend <contract_format> section
+
+Three new optional fields added to the contract format template,
+after the Security section and before the Dependencies line:
+
+Content (added to the per-contract template in <contract_format>):
+
+  **Verification:** verify
+  **Acceptance Criteria:**
+  - {behavioral criterion the user can verify}
+  - {another criterion}
+
+  **Steps:**
+  - {step to verify, when how-to-verify is not obvious}
+  - {another step}
+
+Field rules:
+  - verification: Optional. Values: "auto", "verify". Default: "verify".
+    - "auto": slice proceeds directly from verification to summary/docs
+      after tests pass. No human checkpoint. Use for infrastructure,
+      config, and internal plumbing contracts.
+    - "verify": slice presents an acceptance checkpoint after tests pass.
+      Human must approve before slice completes. Use for everything else.
+  - acceptance_criteria: Optional list under verify tier. Behavioral
+    statements the user can check. Each criterion is a testable assertion
+    about what the user should observe.
+  - steps: Optional list under verify tier. How-to-verify instructions
+    when the verification process is not obvious. Include commands to run,
+    URLs to visit, or actions to perform.
+  - If verification is "verify" and both acceptance_criteria and steps
+    are empty, emit a warning: "Contract {name} has verify tier but no
+    acceptance criteria or steps. Consider adding at least one."
+  - If verification is "auto", acceptance_criteria and steps are ignored
+    (present but not surfaced in the checkpoint).
+
+Output (updated contract format template in gl-architect.md):
+
+  The <contract_format> section gains three new lines in the per-contract
+  template, positioned after **Security:** and before **Dependencies:**:
+
+  **Verification:** auto | verify (default: verify)
+  **Acceptance Criteria:**
+  - [behavioral criterion the user can verify]
+
+  **Steps:**
+  - [step to verify the feature, when how-to-verify is not obvious]
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | InvalidTierValue | verification field has value other than auto/verify | Reject contract. Error: "Invalid verification tier: {value}. Must be auto or verify." |
+  | EmptyVerifyCriteria | tier is verify but both acceptance_criteria and steps are empty | Warn (not error): "Contract {name} has verify tier but no acceptance criteria or steps." |
+
+Invariants:
+  - Default tier is always "verify" (safe default per TD-2 in DESIGN.md)
+  - Existing contracts without verification field default to "verify"
+  - The three fields are optional -- contracts missing them are valid
+  - Field names are exactly: Verification, Acceptance Criteria, Steps
+  - acceptance_criteria items are behavioral (what the user observes),
+    not implementation (how the code works)
+  - steps items are actionable instructions (run X, open Y, click Z),
+    not descriptions of internal behaviour
+  - Fields are positioned after Security and before Dependencies in
+    the contract template (consistent ordering)
+
+Security:
+  - No security impact. Fields are metadata on the contract format.
+
+Verification: auto
+Dependencies: None (this is the foundation contract for the milestone)
+```
+
+### C-63: VerifierTierAwareness
+
+```
+Contract: VerifierTierAwareness
+Boundary: gl-verifier.md -> Verification report (tier reporting addition)
+Slice: S-22 (Schema Extension)
+Design refs: FR-1, FR-4, DESIGN.md 6.6
+
+FILE UPDATE: src/agents/gl-verifier.md — Add tier awareness to verification output
+
+The verifier agent gains awareness of verification tier fields in contracts.
+This is informational only -- the verifier reports tier status, it does not
+enforce the verification gate. The orchestrator enforces the gate.
+
+Behaviour (additions to verifier report):
+
+  1. For each contract in the slice, read the verification field
+     (default: "verify" if absent)
+
+  2. Compute effective tier for the slice:
+     - verify > auto (highest tier wins)
+     - If any contract has tier "verify", effective tier is "verify"
+     - If all contracts have tier "auto", effective tier is "auto"
+
+  3. Include in verification report:
+     ```
+     ## Verification Tier
+     Effective tier: {verify|auto}
+     Per-contract tiers:
+       - {contract_name}: {tier} {criteria_count} criteria, {steps_count} steps
+       - {contract_name}: {tier} {criteria_count} criteria, {steps_count} steps
+
+     Warnings:
+       - {contract_name}: verify tier with no acceptance criteria or steps
+     ```
+
+  4. Flag contracts with verify tier but empty acceptance_criteria and
+     empty steps: include in Warnings subsection.
+
+Input (additional context verifier reads):
+  - verification field from each contract (default: "verify")
+  - acceptance_criteria list from each contract (default: empty)
+  - steps list from each contract (default: empty)
+
+Output (additions to existing verification report):
+  - Effective tier for the slice (string: "verify" or "auto")
+  - Per-contract tier breakdown with criteria/steps counts
+  - Warnings for verify contracts missing both criteria and steps
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | MissingVerificationField | Contract has no verification field | Default to "verify". Note in report: "defaulted to verify" |
+  | InvalidTierInContract | Contract has unrecognised verification value | Report as warning: "Unknown tier '{value}' on {contract}, treating as verify" |
+
+Invariants:
+  - Verifier ONLY reports tier information -- does not enforce the gate
+  - The orchestrator reads the effective tier from the verifier report
+    to decide whether to run Step 6b
+  - Effective tier computation is deterministic: verify > auto
+  - Missing verification field always defaults to "verify"
+  - Warnings are informational, not blocking (verifier still passes)
+  - The verifier report format is additive -- existing sections unchanged
+  - Tier reporting section appears after existing report sections
+
+Security:
+  - No security impact. Informational metadata in verification report.
+
+Verification: auto
+Dependencies: C-62 (contract format must include verification fields first)
+```
+
+---
+
+## S-23: Verification Gate
+
+*User Actions:*
+- *2. After tests pass, a slice with verify tier presents acceptance criteria and optional steps -- user must approve before slice completes*
+
+### C-64: VerificationTiersProtocol
+
+```
+Contract: VerificationTiersProtocol
+Boundary: Reference doc -> Orchestrator + agents (verification tier protocol)
+Slice: S-23 (Verification Gate)
+Design refs: FR-1, FR-2, FR-3, FR-4, DESIGN.md 4.2, 4.3
+
+FILE SPECIFICATION: src/references/verification-tiers.md (~130 lines)
+
+This is the authoritative protocol document for verification tiers.
+All verification tier behaviour is defined here and referenced by
+/gl:slice and agent markdown files.
+
+Output (mandatory sections in the reference doc):
+
+  1. Tier Definitions
+     - Two tiers: auto and verify
+     - auto: tests pass -> slice proceeds to summary/docs
+     - verify: tests pass -> human acceptance checkpoint
+     - Default: verify (safe default)
+     - Tier is set per-contract in CONTRACTS.md verification field
+
+  2. Tier Resolution
+     - Per-slice resolution: highest tier wins (verify > auto)
+     - If any contract in the slice has tier verify, effective is verify
+     - Acceptance criteria aggregated from all verify contracts
+     - Steps aggregated from all verify contracts
+     - One checkpoint per slice (not per contract)
+
+  3. Verify Checkpoint Format
+     - Header: "ALL TESTS PASSING -- Slice {id}: {name}"
+     - Body: aggregated acceptance_criteria as checklist
+     - Body: aggregated steps as numbered list
+     - Prompt: three options (approve, reject with description, partial)
+     - Format adapts: criteria only, steps only, both, or neither
+     - If neither criteria nor steps exist: simple "Does the output
+       match your intent?" prompt
+
+  4. Rejection Flow
+     - Non-"approved" response triggers classification
+     - Three options presented to user (implicit gap classification):
+       1. Tighten the tests (test gap)
+       2. Revise the contract (contract gap)
+       3. Provide more detail (implementation gap)
+     - Routing by choice (see C-67, C-68, C-69)
+
+  5. Rejection Counter
+     - Per-slice count, increments on each non-"approved" response
+     - Escalation at 3 rejections (see C-70, C-71)
+     - Counter is maintained in orchestrator context for the /gl:slice
+       execution lifetime
+
+  6. Agent Isolation in Rejection Loop
+     - Test writer receives: verbatim user feedback, contract,
+       acceptance criteria. No implementation code.
+     - Implementer receives: test names only. No test source code.
+     - Existing isolation rules are preserved.
+
+  7. Backward Compatibility
+     - Contracts without verification field default to verify
+     - config.workflow.visual_checkpoint is deprecated
+     - If visual_checkpoint is true, log warning: "visual_checkpoint
+       is deprecated. Verification tiers in contracts supersede it."
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoContractsForSlice | Slice has no contracts in CONTRACTS.md | Skip verification gate entirely. Warn: "No contracts found for slice {id}. Skipping verification gate." |
+  | AllContractsAuto | All contracts have tier auto | Skip checkpoint. Proceed to Step 7. Log: "All contracts are tier auto. Skipping acceptance checkpoint." |
+
+Invariants:
+  - Reference doc is read-only at runtime (no agent writes to it)
+  - Two tiers only: auto and verify (no third tier)
+  - Default is always verify (safe default)
+  - Rejection routing always goes through test writer first (TDD-correct)
+  - Escalation threshold is always 3 (not configurable)
+  - Acceptance checkpoints always pause, even in yolo mode
+  - Protocol is additive to existing /gl:slice pipeline
+  - Protocol does not interact with circuit breaker (different pipeline steps)
+
+Security:
+  - User feedback in rejection flow may describe application behaviour
+    but MUST NOT include credentials, tokens, or PII
+  - Feedback is passed to test writer as behavioral description only
+
+Verification: auto
+Dependencies: None (self-contained reference document)
+```
+
+### C-65: VerificationTierGate
+
+```
+Contract: VerificationTierGate
+Boundary: /gl:slice orchestrator -> Verification tier gate (new Step 6b)
+Slice: S-23 (Verification Gate)
+Design refs: FR-2, FR-3, FR-4, DESIGN.md 4.2, 6.1
+
+COMMAND UPDATE: src/commands/gl/slice.md — Add Step 6b after Step 6/6a
+
+Step 6b: Verification Tier Gate
+
+This step is inserted after Step 6 (verification passes) and Step 6a
+(locking-to-integration transition, if applicable). It reads the
+effective verification tier and either skips to Step 7 or presents
+an acceptance checkpoint.
+
+Behaviour:
+
+  1. Read verification tier from each contract in the slice
+     (from CONTRACTS.md, default: "verify" if field absent)
+
+  2. Compute effective tier:
+     - verify > auto (highest wins)
+     - If any contract has tier "verify": effective = verify
+     - If all contracts have tier "auto": effective = auto
+
+  3. If effective tier is "auto":
+     - Log: "Verification tier: auto. Skipping acceptance checkpoint."
+     - Proceed to Step 7 (summary/docs)
+
+  4. If effective tier is "verify":
+     - Aggregate acceptance_criteria from all verify-tier contracts
+     - Aggregate steps from all verify-tier contracts
+     - Present Verify Checkpoint (see C-66)
+     - Wait for user response
+     - Handle response:
+       a. "Yes" / approved: proceed to Step 7
+       b. Anything else: enter rejection flow (C-67)
+          - Increment rejection counter (C-70)
+          - Route based on classification (C-68 or C-69)
+          - After rejection handling completes, re-run Step 6b
+
+  5. Check for deprecated visual_checkpoint config:
+     - Read config.workflow.visual_checkpoint
+     - If true, log warning: "visual_checkpoint is deprecated.
+       Verification tiers in contracts supersede it. See
+       references/verification-tiers.md"
+     - Do NOT execute the old visual checkpoint logic
+
+Input:
+  - Slice contracts (from CONTRACTS.md)
+  - Verifier report (from Step 6, includes effective tier)
+  - config.workflow.visual_checkpoint (for deprecation check)
+
+Output:
+  - Gate passes: proceed to Step 7
+  - Gate triggers checkpoint: user approval required
+  - Gate loops: rejection -> test writer -> implementer -> re-verify -> Step 6b
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | ContractReadFailure | Cannot parse contracts from CONTRACTS.md | Warn user. Default to verify tier (safe default). Present generic checkpoint |
+  | UserResponseTimeout | User does not respond to checkpoint | Wait indefinitely (checkpoint is blocking by design) |
+  | RejectionLoopFailure | Test writer or implementer spawn fails during rejection loop | Report error. Offer: retry, pause, skip verification |
+
+Invariants:
+  - Step 6b runs AFTER Step 6 and Step 6a (never before)
+  - Step 6b runs BEFORE Step 7 (always)
+  - The gate is blocking: /gl:slice cannot proceed past Step 6b without
+    either auto tier or user approval
+  - Acceptance checkpoints pause even in yolo mode (per DESIGN.md 6.3)
+  - After rejection loop completes (new tests pass), Step 6b re-runs
+    from the beginning (re-reads tiers, re-aggregates criteria)
+  - visual_checkpoint deprecation warning is logged once per slice execution
+  - Step 9 (existing visual checkpoint) becomes a no-op with deprecation
+    message when verification tiers are active
+
+Security:
+  - No new security surface. Checkpoint is displayed in terminal.
+  - User feedback is handled per agent isolation rules.
+
+Verification: verify
+Acceptance Criteria:
+- After tests pass on a verify-tier slice, the orchestrator presents acceptance criteria to the user
+- After tests pass on an auto-tier slice, the orchestrator skips directly to summary/docs
+- When the user approves, the slice proceeds to Step 7
+- When visual_checkpoint is true in config, a deprecation warning is logged
+
+Steps:
+- Run /gl:slice on a slice with at least one verify-tier contract
+- Observe that after Step 6 verification, a checkpoint is presented with acceptance criteria
+- Type "Yes" to approve and observe the slice proceeds to Step 7
+- Run /gl:slice on a slice with all auto-tier contracts
+- Observe that no checkpoint is presented and the slice proceeds directly to Step 7
+
+Dependencies: C-62 (contracts must have verification fields), C-63 (verifier reports tier), C-64 (protocol defines gate behaviour)
+```
+
+### C-66: VerifyCheckpointPresentation
+
+```
+Contract: VerifyCheckpointPresentation
+Boundary: /gl:slice orchestrator -> User (acceptance checkpoint display)
+Slice: S-23 (Verification Gate)
+Design refs: FR-3, FR-4, DESIGN.md 4.3
+
+CHECKPOINT FORMAT: Presented to user during Step 6b
+
+Format:
+
+  ALL TESTS PASSING -- Slice {slice_id}: {slice_name}
+
+  Please verify the output matches your intent.
+
+  Acceptance criteria:
+    [ ] {criterion 1 from contract A}
+    [ ] {criterion 2 from contract A}
+    [ ] {criterion 3 from contract B}
+
+  Steps to verify:
+    1. {step 1 from contract A}
+    2. {step 2 from contract B}
+
+  Does this match what you intended?
+    1) Yes -- mark complete and continue
+    2) No -- I'll describe what's wrong
+    3) Partially -- some criteria met, I'll describe the gaps
+
+Input:
+  - slice_id: string
+  - slice_name: string
+  - aggregated acceptance_criteria: string[] (from all verify-tier contracts)
+  - aggregated steps: string[] (from all verify-tier contracts)
+
+Output:
+  - user_response: string (one of: "1"/"Yes", "2"/"No", "3"/"Partially",
+    or free-text rejection description)
+
+Format adaptation rules:
+  - If only criteria exist (no steps): show criteria section, omit steps section
+  - If only steps exist (no criteria): show steps section, omit criteria section
+  - If both exist: show both sections
+  - If neither exists: show simplified prompt:
+    "ALL TESTS PASSING -- Slice {id}: {name}\n\n
+     Does the output match your intent?\n
+     1) Yes -- mark complete\n
+     2) No -- I'll describe what's wrong"
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | EmptySliceId | slice_id is empty | Use "unknown" as placeholder. Warn in log |
+  | EmptySliceName | slice_name is empty | Use slice_id as name fallback |
+
+Invariants:
+  - Checkpoint format follows checkpoint-protocol.md patterns (NFR-4)
+  - Criteria are presented as unchecked checkboxes ([ ])
+  - Steps are presented as numbered list
+  - Three response options are always present (unless simplified prompt)
+  - User response "1" or "Yes" (case-insensitive) means approved
+  - Any other response means rejection
+  - Criteria ordering: contracts appear in CONTRACTS.md order
+  - Steps ordering: contracts appear in CONTRACTS.md order
+  - No criteria or steps are duplicated in aggregation
+  - Checkpoint header always includes "ALL TESTS PASSING"
+
+Security:
+  - Checkpoint is displayed in terminal only (not logged to files)
+  - Acceptance criteria may describe application behaviour but
+    MUST NOT include credentials or secrets
+
+Verification: auto
+Dependencies: C-64 (protocol defines checkpoint format), C-65 (gate triggers checkpoint)
+```
+
+---
+
+## S-24: Rejection Flow
+
+*User Actions:*
+- *3. When user rejects, feedback routes through the test writer (TDD-correct) to produce new tests that catch the mismatch*
+
+### C-67: RejectionClassification
+
+```
+Contract: RejectionClassification
+Boundary: /gl:slice orchestrator -> User (gap classification UX)
+Slice: S-24 (Rejection Flow)
+Design refs: FR-5, TD-7, DESIGN.md 4.4
+
+GAP CLASSIFICATION: Presented to user after rejection
+
+When the user responds with anything other than "Yes"/"1" to the
+acceptance checkpoint, the orchestrator captures their feedback and
+presents classification options.
+
+Behaviour:
+
+  1. Capture verbatim user feedback (their rejection response)
+
+  2. Present classification:
+     ```
+     Your feedback: "{user's verbatim response}"
+
+     How should we address this?
+
+     1) Tighten the tests -- the tests aren't specific enough to catch
+        this mismatch
+        (routes to: test writer adds more precise assertions, then
+         implementer passes them)
+
+     2) Revise the contract -- the contract doesn't capture what I
+        actually want
+        (routes to: you update the contract, then the slice restarts)
+
+     3) Provide more detail -- I'll describe exactly what I expect
+        (routes to: test writer uses your detail to write targeted
+         tests, then implementer passes them)
+
+     Which option? (1/2/3)
+     ```
+
+  3. Map user choice to internal classification:
+     | Choice | Internal Classification | Route |
+     |--------|------------------------|-------|
+     | 1 | test_gap | C-68 (spawn test writer with feedback) |
+     | 2 | contract_gap | C-69 (user revises contract) |
+     | 3 | implementation_gap | C-68 (spawn test writer with detail) |
+
+  4. If choice is 3, collect additional detail:
+     ```
+     Please describe exactly what you expected:
+     ```
+     Capture response as detailed_feedback.
+
+Input:
+  - user_rejection: string (verbatim rejection from checkpoint)
+
+Output:
+  - classification: "test_gap" | "contract_gap" | "implementation_gap"
+  - feedback: string (original rejection text)
+  - detailed_feedback: string (additional detail, only for option 3)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | InvalidChoice | User enters something other than 1/2/3 | Re-prompt: "Please choose 1, 2, or 3." Allow free-text after 2 re-prompts (default to test_gap with free-text as feedback) |
+  | EmptyFeedback | User rejection was empty string | Prompt for feedback: "Please describe what doesn't match your intent." |
+
+Invariants:
+  - Classification options are always presented in the same order (1/2/3)
+  - User's verbatim feedback is preserved exactly as typed
+  - Option descriptions include the routing consequence (transparency)
+  - Users do not need to understand Greenlight's internal taxonomy (TD-7)
+  - Options are phrased as actions, not categories
+  - Choice 3 always collects additional detail before routing
+  - Default after failed re-prompts is test_gap (safest route -- adds tests)
+
+Security:
+  - User feedback may describe application behaviour
+  - Feedback MUST NOT be used to execute commands or modify files directly
+  - Feedback is passed as text context to test writer (no code execution)
+
+Verification: auto
+Dependencies: C-65 (gate must trigger rejection flow), C-66 (checkpoint must present options)
+```
+
+### C-68: RejectionToTestWriter
+
+```
+Contract: RejectionToTestWriter
+Boundary: /gl:slice orchestrator -> gl-test-writer agent (rejection feedback routing)
+Slice: S-24 (Rejection Flow)
+Design refs: FR-5, TD-4, TD-8, NFR-3, DESIGN.md 4.4
+
+TEST WRITER SPAWN: After test_gap or implementation_gap classification
+
+When the user's rejection is classified as test_gap (option 1) or
+implementation_gap (option 3), the orchestrator spawns the test writer
+with behavioral feedback to write tighter tests.
+
+Behaviour:
+
+  1. Prepare context for test writer spawn:
+     ```xml
+     <rejection_context>
+     <feedback>{user's verbatim rejection feedback}</feedback>
+     <classification>{test_gap | implementation_gap}</classification>
+     <detailed_feedback>{additional detail from user, if option 3}</detailed_feedback>
+     </rejection_context>
+
+     <contract>
+     {full contract definition(s) for the verify-tier contracts in this slice}
+     </contract>
+
+     <acceptance_criteria>
+     {aggregated acceptance criteria that the user was reviewing}
+     </acceptance_criteria>
+     ```
+
+  2. Test writer writes new or tightened tests that:
+     - Assert the specific behaviour the user described
+     - Are behavioral (test what the user observes, not implementation)
+     - Are additive (do not remove existing passing tests)
+
+  3. After test writer completes, spawn implementer:
+     - Implementer receives new test names (not test source code)
+     - Implementer makes new tests pass
+     - Existing tests must continue passing
+
+  4. After implementer completes, re-run full verification:
+     - Step 4 (run tests) to confirm all pass
+     - Step 6 (verifier) to confirm contract coverage
+     - Step 6b (verification gate) to re-present checkpoint
+
+Input:
+  - rejection_feedback: string (user's verbatim words)
+  - classification: "test_gap" | "implementation_gap"
+  - detailed_feedback: string (empty for test_gap, user's detail for implementation_gap)
+  - contracts: string[] (full contract definitions for verify-tier contracts)
+  - acceptance_criteria: string[] (aggregated criteria from contracts)
+
+Output:
+  - New or modified test files
+  - Implementation changes to pass new tests
+  - Re-verification cycle
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | TestWriterSpawnFailure | Test writer agent fails to spawn or errors | Report to user. Offer: retry, pause, skip verification |
+  | ImplementerSpawnFailure | Implementer agent fails to spawn or errors | Report to user. Offer: retry, pause, skip verification |
+  | NewTestsStillFailing | New tests fail after implementer completes | Enter normal circuit breaker flow (C-55). If circuit trips, present diagnostic + rollback |
+  | ExistingTestsRegressed | Previously passing tests now fail | Report regression. Implementer must fix regressions before proceeding |
+
+Invariants:
+  - Test writer receives ONLY behavioral feedback -- no implementation code (NFR-3)
+  - Test writer receives the contract and acceptance criteria -- not test source
+  - Implementer receives test names only -- not test source code (existing isolation)
+  - New tests are additive -- existing passing tests are not removed or modified
+  - The full verification cycle re-runs after rejection handling (not partial)
+  - Rejection handling integrates with existing circuit breaker protocol
+  - Test writer feedback is the user's verbatim words (no AI summarisation)
+
+Security:
+  - Agent isolation is preserved throughout the rejection loop
+  - Test writer does not see implementation code
+  - Implementer does not see test source code
+  - User feedback is treated as behavioral context, not executable content
+
+Verification: verify
+Acceptance Criteria:
+- When user rejects with "tighten tests", the test writer is spawned with feedback and contract
+- Test writer produces new tests that assert the user's described behaviour
+- Implementer makes the new tests pass without breaking existing tests
+- After implementation, the verification gate re-presents the checkpoint
+
+Steps:
+- Reject a slice checkpoint and choose option 1 (tighten tests)
+- Observe test writer spawns with the rejection feedback
+- Observe implementer spawns after test writer completes
+- Observe verification gate re-runs after implementation
+
+Dependencies: C-65 (gate triggers rejection), C-67 (classification routes to test writer)
+```
+
+### C-69: RejectionToContractRevision
+
+```
+Contract: RejectionToContractRevision
+Boundary: /gl:slice orchestrator -> User (contract revision route)
+Slice: S-24 (Rejection Flow)
+Design refs: FR-5, DESIGN.md 4.4
+
+CONTRACT REVISION: After contract_gap classification
+
+When the user's rejection is classified as contract_gap (option 2),
+the orchestrator presents the current contract for user revision and
+restarts the slice.
+
+Behaviour:
+
+  1. Present the current contract(s) to the user:
+     ```
+     CONTRACT REVISION -- Slice {slice_id}: {slice_name}
+
+     The following contracts define this slice's behaviour.
+     Edit the acceptance criteria, contract definition, or both.
+
+     Current contract(s):
+     ---
+     {full contract text for each verify-tier contract}
+     ---
+
+     What needs to change?
+     ```
+
+  2. Capture user's revision description
+
+  3. Apply revision:
+     - If user provides specific acceptance criteria changes: update
+       CONTRACTS.md acceptance_criteria and/or steps fields
+     - If user describes contract-level changes: flag for architect
+       re-engagement (present recommendation to run /gl:add-slice
+       with revision context)
+     - If changes are minor (criteria wording): apply directly and
+       restart from Step 1 (test writing)
+
+  4. Restart slice:
+     - Re-run from Step 1 (write tests) with updated contracts
+     - Previous implementation is discarded (rollback to checkpoint if available)
+
+Input:
+  - contracts: string[] (full verify-tier contract definitions)
+  - slice_id: string
+  - slice_name: string
+
+Output:
+  - Updated contracts in CONTRACTS.md (if criteria/steps revision)
+  - Slice restart from Step 1
+  - Or: recommendation to re-run /gl:add-slice (if fundamental revision)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | EmptyRevision | User provides no revision description | Re-prompt: "Please describe what the contract should say instead." |
+  | ContractsReadFailure | Cannot read contracts from CONTRACTS.md | Report error. Cannot proceed with revision. Suggest manual edit |
+  | ContractsWriteFailure | Cannot write updated contracts to CONTRACTS.md | Report error. Display proposed changes for manual application |
+
+Invariants:
+  - Contract revision is always user-driven (no AI auto-revision)
+  - Minor revisions (acceptance criteria wording) can be applied in-place
+  - Fundamental revisions (input/output changes, new boundaries) require
+    architect re-engagement via /gl:add-slice
+  - Slice restarts from Step 1 after revision (clean TDD loop)
+  - Rollback to checkpoint is offered before restart if tag exists
+  - User sees the full contract text before making changes
+  - Contract revision increments the rejection counter (C-70)
+
+Security:
+  - User revision text is treated as contract metadata, not executable code
+  - CONTRACTS.md modifications follow existing write patterns
+
+Verification: auto
+Dependencies: C-65 (gate triggers rejection), C-67 (classification routes to contract revision)
+```
+
+---
+
+## S-25: Rejection Counter
+
+*User Actions:*
+- *4. After 3 rejections on a slice, escalation triggers with options: re-scope, pair, or skip*
+
+### C-70: RejectionCounter
+
+```
+Contract: RejectionCounter
+Boundary: /gl:slice orchestrator -> Per-slice rejection tracking (in-memory state)
+Slice: S-25 (Rejection Counter)
+Design refs: FR-6, TD-6, DESIGN.md 4.5
+
+REJECTION COUNTER: Per-slice tracking within /gl:slice execution
+
+The orchestrator tracks rejections per slice. The counter increments
+on every non-"approved" response to the acceptance checkpoint,
+regardless of classification choice.
+
+Behaviour:
+
+  1. Initialise rejection state at start of Step 6b:
+     ```yaml
+     slice_id: S-{N}
+     rejection_count: 0
+     rejection_log: []
+     ```
+
+  2. On each rejection (any response other than "1"/"Yes"):
+     a. Increment rejection_count
+     b. Append to rejection_log:
+        ```yaml
+        - attempt: {rejection_count}
+          feedback: "{user's verbatim response}"
+          classification: "{test_gap|contract_gap|implementation_gap}"
+          action_taken: "{description of routing action}"
+        ```
+     c. Check escalation threshold: if rejection_count >= 3, trigger
+        escalation (C-71)
+
+  3. Counter persists across rejection loops within a single
+     /gl:slice execution. If /gl:slice is re-invoked (new execution),
+     counter resets to 0.
+
+Input:
+  - rejection event: { feedback: string, classification: string, action: string }
+
+Output:
+  - rejection_count: number (0-3+)
+  - rejection_log: array of rejection entries
+  - escalation_triggered: boolean
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | CounterOverflow | Counter exceeds 3 (should not happen due to escalation) | Trigger escalation immediately. Log warning |
+  | LogCorruption | Rejection log becomes inconsistent | Reset log. Preserve count. Warn user |
+
+Invariants:
+  - Counter increments on EVERY non-approved response (including contract revisions)
+  - Counter is per-slice, not per-contract
+  - Counter resets to 0 on new /gl:slice execution (not persisted to disk)
+  - Escalation triggers at exactly 3 (not before, not after)
+  - Rejection log preserves chronological order
+  - Rejection log includes the user's verbatim feedback
+  - Counter does not interact with circuit breaker attempt counters
+    (different concerns, different pipeline steps)
+  - A contract revision (option 2) that restarts the slice from Step 1
+    does NOT reset the rejection counter (the counter persists for the
+    entire /gl:slice execution)
+
+Security:
+  - Rejection log is in-memory only (not written to disk)
+  - User feedback in log may contain behavioral descriptions
+
+Verification: auto
+Dependencies: C-65 (gate triggers rejection which increments counter)
+```
+
+### C-71: RejectionEscalation
+
+```
+Contract: RejectionEscalation
+Boundary: /gl:slice orchestrator -> User (escalation at 3 rejections)
+Slice: S-25 (Rejection Counter)
+Design refs: FR-6, TD-6, DESIGN.md 4.5
+
+ESCALATION FORMAT: Presented to user when rejection_count reaches 3
+
+Behaviour:
+
+  1. When rejection_count reaches 3, present escalation:
+     ```
+     ESCALATION: {slice_name}
+
+     This slice has been rejected 3 times. The verification criteria
+     may not match what the contracts and tests can deliver.
+
+     Rejection history:
+     1. "{feedback 1}" -> {action taken 1}
+     2. "{feedback 2}" -> {action taken 2}
+     3. "{feedback 3}" -> {action taken 3}
+
+     Options:
+     1) Re-scope -- the contract is fundamentally wrong. Revise
+        contracts and restart from scratch.
+     2) Pair -- provide detailed, step-by-step guidance for exactly
+        what you want.
+     3) Skip verification -- mark this slice as auto-verified and
+        proceed. (The mismatch is acknowledged but deferred.)
+
+     Which option? (1/2/3)
+     ```
+
+  2. Route based on choice:
+     | Choice | Action |
+     |--------|--------|
+     | 1 (re-scope) | Present full contract revision. Recommend /gl:add-slice with revision context. Reset rejection counter. Restart slice from scratch |
+     | 2 (pair) | Collect step-by-step guidance from user. Pass as detailed context to test writer. Spawn test writer + implementer. Reset rejection counter. Re-run verification gate |
+     | 3 (skip) | Mark slice effective tier as "auto" for this execution. Log: "Verification skipped after 3 rejections. Mismatch acknowledged." Proceed to Step 7 |
+
+Input:
+  - rejection_log: array of { feedback, classification, action_taken }
+  - slice_id: string
+  - slice_name: string
+
+Output:
+  - User choice: "re-scope" | "pair" | "skip"
+  - Corresponding routing action
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | InvalidEscalationChoice | User enters something other than 1/2/3 | Re-prompt: "Please choose 1, 2, or 3." |
+  | EmptyRejectionLog | Escalation triggered but rejection log is empty | Display escalation without history. Warn in log |
+
+Invariants:
+  - Escalation triggers at exactly 3 rejections (not configurable)
+  - Rejection history is always displayed (full transparency)
+  - "Skip verification" is an explicit user choice with logged acknowledgment
+  - "Re-scope" resets the rejection counter (fresh start)
+  - "Pair" resets the rejection counter (user is actively guiding)
+  - "Skip" does not reset the counter (it exits the loop)
+  - Escalation threshold of 3 matches circuit breaker per-test threshold
+    (consistent system-wide limits)
+  - Escalation format follows existing checkpoint patterns
+  - After escalation, the slice either restarts (re-scope), continues
+    with more tests (pair), or completes with acknowledged mismatch (skip)
+
+Security:
+  - Rejection history displayed to user only (not persisted to files)
+  - "Skip" option creates an explicit log entry (auditability)
+
+Verification: verify
+Acceptance Criteria:
+- After 3 rejections on a slice, escalation options are presented
+- Re-scope option resets rejection counter and restarts the slice
+- Pair option collects detailed guidance and spawns test writer
+- Skip option marks the slice as auto-verified and proceeds
+
+Steps:
+- Reject a verify-tier slice three times
+- Observe the escalation prompt with rejection history
+- Choose option 3 (skip) and observe the slice proceeds with a logged acknowledgment
+
+Dependencies: C-70 (counter must track rejections to trigger escalation)
+```
+
+---
+
+## S-26: Documentation and Deprecation
+
+*User Actions:*
+- *5. Slice with auto tier behaves exactly as today -- no regression (documentation confirms)*
+- *Supports all user actions (infrastructure enabling layer)*
+
+### C-72: CLAUDEmdVerificationTierRule
+
+```
+Contract: CLAUDEmdVerificationTierRule
+Boundary: CLAUDE.md -> All agents (verification tier hard rule in standards)
+Slice: S-26 (Documentation and Deprecation)
+Design refs: DESIGN.md 4.7
+
+FILE UPDATE: src/CLAUDE.md
+
+Location: Insert as a new subsection within "Code Quality Constraints" section,
+after "Circuit Breaker" and before "Logging & Observability".
+
+Content (exactly 4 lines, hard rule):
+  ### Verification Tiers
+  - Every contract has a verification tier: `auto` or `verify` (default)
+  - After tests pass and verifier approves, the tier gate determines if human acceptance is required
+  - Rejection feedback routes to the test writer first -- if the implementation is wrong, the tests weren't tight enough
+  - Full protocol: `references/verification-tiers.md`
+
+Errors: None (static content update)
+
+Invariants:
+  - Rule is exactly 5 lines (header + 4 bullet points)
+  - Rule references the full protocol in references/verification-tiers.md
+  - Rule is placed within Code Quality Constraints section, after Circuit Breaker
+  - Existing CLAUDE.md sections unchanged
+  - This is a hard rule, not a recommendation -- phrased as imperatives
+  - The default tier (verify) is stated explicitly
+  - The TDD-correct rejection routing is stated explicitly (test writer first)
+
+Security:
+  - No security impact. Static content update.
+
+Verification: auto
+Dependencies: C-64 (references/verification-tiers.md must be defined)
+```
+
+### C-73: CheckpointProtocolAcceptanceType
+
+```
+Contract: CheckpointProtocolAcceptanceType
+Boundary: checkpoint-protocol.md -> Acceptance checkpoint type (new row + Visual deprecation)
+Slice: S-26 (Documentation and Deprecation)
+Design refs: NFR-4, DESIGN.md 6.3
+
+FILE UPDATE: src/references/checkpoint-protocol.md — Add Acceptance type, deprecate Visual
+
+Changes to the checkpoint type table:
+
+  1. Deprecate Visual checkpoint type:
+     - Strike through or mark as deprecated: "~~Visual~~ Deprecated -- use verify tier"
+     - Existing description preserved for reference
+
+  2. Add Acceptance checkpoint type:
+     | Checkpoint Type | Trigger | When to Pause |
+     |-----------------|---------|---------------|
+     | Acceptance | Slice verification tier is verify | always (even in yolo mode) |
+
+  3. Add Acceptance checkpoint description:
+     - Trigger: Step 6b verification tier gate resolves to verify
+     - Content: aggregated acceptance criteria + steps from contracts
+     - User action: approve, reject with feedback, or partial
+     - Rejection routes: test writer (TDD-correct) or contract revision
+     - Escalation: after 3 rejections
+
+  4. Update mode table (if exists) to show Acceptance checkpoints
+     always pause, regardless of mode (interactive, yolo, CI).
+
+Additional changes:
+
+  5. Update src/references/verification-patterns.md:
+     - Add cross-reference: "For human acceptance verification (per-contract
+       tiers, rejection flows, escalation), see references/verification-tiers.md"
+     - Insert after existing content, before any closing section
+
+  6. Update src/templates/config.md:
+     - Add deprecation note on visual_checkpoint field:
+       "Deprecated: visual_checkpoint is superseded by verification tiers in
+        contracts. See references/verification-tiers.md. Field is preserved
+        for backward compatibility but ignored when verification tiers are
+        active."
+
+  7. Update Step 9 of src/commands/gl/slice.md:
+     - Replace visual checkpoint logic with deprecation warning:
+       "If config.workflow.visual_checkpoint is true, log: 'visual_checkpoint
+        is deprecated. Verification tiers in contracts supersede it.
+        See references/verification-tiers.md'"
+     - Do not execute visual checkpoint logic (it is subsumed by Step 6b)
+
+Errors: None (static content updates)
+
+Invariants:
+  - Acceptance checkpoints ALWAYS pause, even in yolo mode
+  - Visual checkpoint type is deprecated, not removed (backward compatibility)
+  - Cross-reference in verification-patterns.md is informational only
+  - Config template deprecation note is informational only
+  - Step 9 becomes a no-op with deprecation warning (not removed from pipeline)
+  - Existing checkpoint types (Decision, External Action, Circuit Break)
+    are unchanged
+
+Security:
+  - No security impact. Documentation updates only.
+
+Verification: auto
+Dependencies: C-64 (verification-tiers.md must be defined), C-65 (Step 6b must be defined)
+```
+
+### C-74: ManifestVerificationTiersUpdate
+
+```go
+// Contract: ManifestVerificationTiersUpdate
+// Boundary: Go CLI -> Manifest (1 new file path for verification tiers)
+// Slice: S-26 (Documentation and Deprecation)
+//
+// FILE: internal/installer/installer.go
+//
+// Change: Add 1 new entry to Manifest slice
+//
+// New entry (inserted in alphabetical order within references/ section):
+//   "references/verification-tiers.md"    // NEW -- verification tiers protocol
+//
+// Updated Manifest (35 entries, up from 34):
+//   "agents/gl-architect.md"
+//   "agents/gl-assessor.md"
+//   "agents/gl-codebase-mapper.md"
+//   "agents/gl-debugger.md"
+//   "agents/gl-designer.md"
+//   "agents/gl-implementer.md"
+//   "agents/gl-security.md"
+//   "agents/gl-test-writer.md"
+//   "agents/gl-verifier.md"
+//   "agents/gl-wrapper.md"
+//   "commands/gl/add-slice.md"
+//   "commands/gl/assess.md"
+//   "commands/gl/changelog.md"
+//   "commands/gl/debug.md"
+//   "commands/gl/design.md"
+//   "commands/gl/help.md"
+//   "commands/gl/init.md"
+//   "commands/gl/map.md"
+//   "commands/gl/pause.md"
+//   "commands/gl/quick.md"
+//   "commands/gl/resume.md"
+//   "commands/gl/roadmap.md"
+//   "commands/gl/settings.md"
+//   "commands/gl/ship.md"
+//   "commands/gl/slice.md"
+//   "commands/gl/status.md"
+//   "commands/gl/wrap.md"
+//   "references/checkpoint-protocol.md"
+//   "references/circuit-breaker.md"
+//   "references/deviation-rules.md"
+//   "references/verification-patterns.md"
+//   "references/verification-tiers.md"    <-- NEW
+//   "templates/config.md"
+//   "templates/state.md"
+//   "CLAUDE.md"
+//
+// Errors: none (compile-time constant)
+//
+// Invariants:
+// - CLAUDE.md remains the LAST entry
+// - Entries within each section (agents/, commands/gl/, references/) are
+//   alphabetically ordered
+// - go:embed directive in main.go already uses wildcards
+//   (src/references/*.md) so new .md files in references/ are
+//   automatically embedded -- no main.go change needed
+// - Manifest count increases from 34 to 35
+// - All existing tests that validate manifest count must be updated to expect 35
+// - This change is additive to C-33, C-38, and C-61 (previous manifest updates)
+//
+// Verification: auto
+// Dependencies: C-61 (previous manifest update must be applied first or simultaneously)
+```
+
+---
+
+## S-27: Architect Integration
+
+*User Actions:*
+- *1. Architect can set a verification tier (auto/verify) on each contract, with verify as the default*
+
+### C-75: ArchitectTierGuidance
+
+```
+Contract: ArchitectTierGuidance
+Boundary: gl-architect.md -> Tier selection guidance and acceptance criteria generation
+Slice: S-27 (Architect Integration)
+Design refs: FR-7, TD-2, TD-3, DESIGN.md build order step 6
+
+FILE UPDATE: src/agents/gl-architect.md — Add tier selection guidance
+
+Two additions to the architect agent:
+
+1. Tier Selection Guidance (new section or addition to <rules>):
+
+   ## Verification Tier Selection
+
+   Every contract you produce should include a verification tier.
+
+   **Default: verify.** When in doubt, use verify. The cost of an
+   unnecessary human checkpoint is low (user types "approved"). The
+   cost of a missing checkpoint is a completed slice that doesn't
+   match intent.
+
+   **When to use auto:**
+   - Infrastructure contracts (manifest updates, config changes)
+   - Internal plumbing (agent file updates, reference doc updates)
+   - Schema/type definitions with no user-visible behaviour
+   - Build tooling, CI/CD configuration
+   - Contracts where "tests pass" fully captures correctness
+
+   **When to use verify:**
+   - Any contract with user-visible behaviour
+   - UI components, page layouts, visual output
+   - API endpoints where response format matters to the user
+   - Business logic where intent may differ from specification
+   - Any contract where "tests pass" does NOT fully capture correctness
+   - When you are uncertain (verify is the safe default)
+
+   **Writing acceptance criteria:**
+   - Each criterion is a behavioral statement the user can observe
+   - Use present tense: "User sees X", "Page displays Y", "API returns Z"
+   - Be specific: "Cards render in a 3-column grid" not "Layout looks correct"
+   - Include negative criteria when relevant: "No error messages appear"
+   - 2-5 criteria per contract (more than 5 suggests the contract is too large)
+
+   **Writing steps:**
+   - Include when how-to-verify is not obvious
+   - Start each step with an action verb: "Run...", "Open...", "Click..."
+   - Include commands, URLs, or navigation paths
+   - Steps are optional -- omit when criteria are self-explanatory
+
+2. Output Checklist Update (addition to <output_checklist>):
+
+   Add to the checklist:
+   - [ ] Every contract has a verification tier (auto or verify)
+   - [ ] verify-tier contracts have at least one acceptance criterion or step
+   - [ ] auto-tier contracts have a clear reason for skipping human verification
+   - [ ] Acceptance criteria are behavioral (what user observes), not implementation
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | MissingTierOnContract | Architect produces contract without verification field | Defaults to verify. Output checklist catches this as a warning |
+  | TooManyCriteria | Contract has more than 5 acceptance criteria | Suggest splitting the contract. Not blocking -- just a guideline |
+
+Invariants:
+  - Every contract produced by the architect includes a verification field
+  - Default is always verify (safe default)
+  - Acceptance criteria are behavioral, not implementation
+  - Steps are actionable, not descriptive
+  - Auto tier requires justification (why tests alone capture correctness)
+  - Architect output checklist enforces verification field presence
+  - Guidance is non-prescriptive: the architect can override with
+    good reasoning (auto for a UI contract with thorough tests, verify
+    for an infrastructure contract with user-visible side effects)
+
+Security:
+  - No security impact. Agent guidance update.
+
+Verification: auto
+Dependencies: C-62 (contract format must include verification fields)
+```
+
+---
+
+## Updated User Action Mapping (Verification Tiers)
+
+| User Action | Slice(s) | Contracts | Enabled By |
+|-------------|----------|-----------|------------|
+| 1. Architect can set a verification tier (auto/verify) on each contract, with verify as the default | S-22, S-27 | C-62, C-63, C-75 | Contract schema extension + architect tier guidance |
+| 2. After tests pass, a slice with verify tier presents acceptance criteria and optional steps -- user must approve before slice completes | S-23, S-26 | C-64, C-65, C-66, C-73 | Verification gate + protocol + checkpoint type |
+| 3. When user rejects, feedback routes through the test writer (TDD-correct) to produce new tests that catch the mismatch | S-24 | C-67, C-68, C-69 | Rejection classification + test writer routing + contract revision |
+| 4. After 3 rejections on a slice, escalation triggers with options: re-scope, pair, or skip | S-25 | C-70, C-71 | Rejection counter + escalation |
+| 5. Slice with auto tier behaves exactly as today -- no regression | S-23, S-26 | C-65, C-72, C-73 | Verification gate auto path + CLAUDE.md rule + checkpoint deprecation |

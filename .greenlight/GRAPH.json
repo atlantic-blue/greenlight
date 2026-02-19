@@ -1,7 +1,7 @@
 {
   "project": "greenlight",
-  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, documentation system, and circuit breaker module. Defines build order by slice with explicit dependencies and parallelism.",
-  "date": "2026-02-18",
+  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, documentation system, circuit breaker module, and verification tiers. Defines build order by slice with explicit dependencies and parallelism.",
+  "date": "2026-02-19",
 
   "slices": {
     "S-01": {
@@ -282,6 +282,99 @@
         "CLAUDE.md -> All agents (5-line hard rule)",
         "Go CLI -> Manifest (2 new file paths)"
       ]
+    },
+
+    "S-22": {
+      "name": "Schema Extension",
+      "description": "Add verification, acceptance_criteria, and steps fields to the contract format in gl-architect.md. Update gl-verifier.md to report tier in verification output. This is the foundation -- contracts must support tiers before anything else.",
+      "deliverables": ["src/agents/gl-architect.md (update)", "src/agents/gl-verifier.md (update)"],
+      "contracts": ["C-62", "C-63"],
+      "depends_on": [],
+      "user_action": "1. Architect can set a verification tier (auto/verify) on each contract, with verify as the default",
+      "milestone": "verification-tiers",
+      "wave": 14,
+      "estimated_tests": 6,
+      "boundaries": [
+        "gl-architect.md -> Contract format (verification fields)",
+        "gl-verifier.md -> Verification report (tier reporting)"
+      ]
+    },
+    "S-23": {
+      "name": "Verification Gate",
+      "description": "Add Step 6b to /gl:slice. Read tier from contracts, resolve effective tier (verify > auto, aggregation), present Verify checkpoint, handle approved response. Create references/verification-tiers.md with tier definitions and checkpoint format. Simple gate -- no rejection handling yet.",
+      "deliverables": ["src/references/verification-tiers.md", "src/commands/gl/slice.md (update)"],
+      "contracts": ["C-64", "C-65", "C-66"],
+      "depends_on": ["S-22"],
+      "user_action": "2. After tests pass, a slice with verify tier presents acceptance criteria and optional steps -- user must approve before slice completes",
+      "milestone": "verification-tiers",
+      "wave": 15,
+      "estimated_tests": 10,
+      "boundaries": [
+        "Reference doc -> Orchestrator + agents (verification tier rules)",
+        "/gl:slice orchestrator -> Verification tier gate (Step 6b)",
+        "/gl:slice orchestrator -> User (acceptance checkpoint)"
+      ]
+    },
+    "S-24": {
+      "name": "Rejection Flow",
+      "description": "Handle non-approved responses in the verification gate. Present structured classification options. Route to test writer (with behavioral feedback, contract, acceptance criteria) or to user for contract revision. Resume TDD loop after new tests.",
+      "deliverables": ["src/commands/gl/slice.md (update)", "src/references/verification-tiers.md (update)"],
+      "contracts": ["C-67", "C-68", "C-69"],
+      "depends_on": ["S-23"],
+      "user_action": "3. When user rejects, feedback routes through the test writer (TDD-correct) to produce new tests that catch the mismatch",
+      "milestone": "verification-tiers",
+      "wave": 16,
+      "estimated_tests": 10,
+      "boundaries": [
+        "/gl:slice orchestrator -> User (gap classification UX)",
+        "/gl:slice orchestrator -> gl-test-writer (rejection feedback)",
+        "/gl:slice orchestrator -> User (contract revision route)"
+      ]
+    },
+    "S-25": {
+      "name": "Rejection Counter",
+      "description": "Track rejections per slice. Increment on each rejection. Escalation at 3 with options: re-scope, pair, skip. Add escalation format to references/verification-tiers.md.",
+      "deliverables": ["src/commands/gl/slice.md (update)", "src/references/verification-tiers.md (update)"],
+      "contracts": ["C-70", "C-71"],
+      "depends_on": ["S-23"],
+      "user_action": "4. After 3 rejections on a slice, escalation triggers with options: re-scope, pair, or skip",
+      "milestone": "verification-tiers",
+      "wave": 16,
+      "estimated_tests": 8,
+      "boundaries": [
+        "/gl:slice orchestrator -> Per-slice rejection tracking",
+        "/gl:slice orchestrator -> User (escalation at 3 rejections)"
+      ]
+    },
+    "S-26": {
+      "name": "Documentation and Deprecation",
+      "description": "Update CLAUDE.md with verification tier rule. Update checkpoint-protocol.md with Acceptance checkpoint type and Visual deprecation. Update verification-patterns.md with cross-reference. Add deprecation note to templates/config.md for visual_checkpoint. Modify Step 9 of /gl:slice to log deprecation warning. Add 1 manifest entry for references/verification-tiers.md.",
+      "deliverables": ["src/CLAUDE.md (update)", "src/references/checkpoint-protocol.md (update)", "src/references/verification-patterns.md (update)", "src/templates/config.md (update)", "src/commands/gl/slice.md (update)", "internal/installer/installer.go (manifest update +1)", "internal/installer/manifest_docs_test.go (count update)"],
+      "contracts": ["C-72", "C-73", "C-74"],
+      "depends_on": ["S-23"],
+      "user_action": "5. Slice with auto tier behaves exactly as today -- no regression; Supports all user actions (infrastructure enabling layer)",
+      "milestone": "verification-tiers",
+      "wave": 17,
+      "estimated_tests": 8,
+      "boundaries": [
+        "CLAUDE.md -> All agents (verification tier hard rule)",
+        "checkpoint-protocol.md -> Acceptance checkpoint type",
+        "Go CLI -> Manifest (1 new file path)"
+      ]
+    },
+    "S-27": {
+      "name": "Architect Integration",
+      "description": "Update gl-architect.md to generate acceptance_criteria and steps from requirements. Add guidance for tier selection: auto for pure data/logic/infrastructure, verify for everything else (it is the default anyway). Update output checklist with verification tier checks.",
+      "deliverables": ["src/agents/gl-architect.md (update)"],
+      "contracts": ["C-75"],
+      "depends_on": ["S-22"],
+      "user_action": "1. Architect can set a verification tier (auto/verify) on each contract, with verify as the default",
+      "milestone": "verification-tiers",
+      "wave": 17,
+      "estimated_tests": 4,
+      "boundaries": [
+        "gl-architect.md -> Tier selection guidance and acceptance criteria generation"
+      ]
     }
   },
 
@@ -363,6 +456,30 @@
       "slices": ["S-21"],
       "parallel": false,
       "scope": "circuit-breaker"
+    },
+    "14": {
+      "description": "Verification tiers foundation: contract schema extension (verification, acceptance_criteria, steps fields) and verifier tier awareness. No dependencies on other milestones. Standalone foundation for all verification tier features.",
+      "slices": ["S-22"],
+      "parallel": false,
+      "scope": "verification-tiers"
+    },
+    "15": {
+      "description": "Verification gate: references/verification-tiers.md protocol document and Step 6b integration into /gl:slice. Depends on S-22 (contracts must support tier fields before the gate can read them).",
+      "slices": ["S-23"],
+      "parallel": false,
+      "scope": "verification-tiers"
+    },
+    "16": {
+      "description": "Rejection handling: rejection flow (classification, test writer routing, contract revision) and rejection counter (per-slice tracking, escalation at 3). Both depend on S-23 (gate must exist to trigger rejections) and can be built in parallel.",
+      "slices": ["S-24", "S-25"],
+      "parallel": true,
+      "scope": "verification-tiers"
+    },
+    "17": {
+      "description": "Verification tiers infrastructure and architect integration: CLAUDE.md rule, checkpoint protocol update, manifest entry, visual_checkpoint deprecation, and architect tier selection guidance. Depends on S-23 (protocol and gate must exist) for documentation slices, and S-22 for architect integration.",
+      "slices": ["S-26", "S-27"],
+      "parallel": true,
+      "scope": "verification-tiers"
     }
   },
 
@@ -392,7 +509,12 @@
     { "from": "S-19", "to": "S-18", "reason": "Checkpoint/rollback integration references circuit breaker protocol (C-54) and implementer diagnostic output (C-55)" },
     { "from": "S-20", "to": "S-18", "reason": "Debug command produces structured diagnostic in the format defined by circuit breaker protocol (C-54)" },
     { "from": "S-21", "to": "S-18", "reason": "CLAUDE.md rule references circuit-breaker.md which must exist; manifest entry for references/circuit-breaker.md requires the file" },
-    { "from": "S-21", "to": "S-20", "reason": "Manifest entry for commands/gl/debug.md requires the debug command file to exist" }
+    { "from": "S-21", "to": "S-20", "reason": "Manifest entry for commands/gl/debug.md requires the debug command file to exist" },
+    { "from": "S-23", "to": "S-22", "reason": "Verification gate reads tier fields from contracts; contracts must support verification/acceptance_criteria/steps fields (C-62) before gate can resolve them" },
+    { "from": "S-24", "to": "S-23", "reason": "Rejection flow handles non-approved responses from the verification gate; gate must exist (C-65) to trigger rejections" },
+    { "from": "S-25", "to": "S-23", "reason": "Rejection counter tracks rejections from the verification gate; gate must exist (C-65) to produce rejections to count" },
+    { "from": "S-26", "to": "S-23", "reason": "Documentation references verification-tiers.md (C-64) which must exist; checkpoint protocol update references Step 6b (C-65); manifest entry requires references/verification-tiers.md file" },
+    { "from": "S-27", "to": "S-22", "reason": "Architect tier guidance references the verification fields (C-62) that must be defined in the contract format first" }
   ],
 
   "import_graph": {
@@ -473,6 +595,31 @@
       "action": "Implementer rolls back to clean checkpoint state after human provides input (no debris from failed attempts)",
       "slices": ["S-19"],
       "primary_slice": "S-19"
+    },
+    "15_verification_tier_setting": {
+      "action": "Architect can set a verification tier (auto/verify) on each contract, with verify as the default",
+      "slices": ["S-22", "S-27"],
+      "primary_slice": "S-22"
+    },
+    "16_verification_gate": {
+      "action": "After tests pass, a slice with verify tier presents acceptance criteria and optional steps -- user must approve before slice completes",
+      "slices": ["S-23", "S-26"],
+      "primary_slice": "S-23"
+    },
+    "17_rejection_flow": {
+      "action": "When user rejects, feedback routes through the test writer (TDD-correct) to produce new tests that catch the mismatch",
+      "slices": ["S-24"],
+      "primary_slice": "S-24"
+    },
+    "18_rejection_escalation": {
+      "action": "After 3 rejections on a slice, escalation triggers with options: re-scope, pair, or skip",
+      "slices": ["S-25"],
+      "primary_slice": "S-25"
+    },
+    "19_auto_tier_no_regression": {
+      "action": "Slice with auto tier behaves exactly as today -- no regression",
+      "slices": ["S-23", "S-26"],
+      "primary_slice": "S-23"
     }
   }
 }
