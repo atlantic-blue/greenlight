@@ -146,7 +146,32 @@ Track all deviations for the summary.
 
 ## When Tests Won't Pass
 
-If after implementing, some tests still fail:
+This agent operates under the Circuit Breaker Protocol defined in `references/circuit-breaker.md`. Read that document for the full protocol. The rules below are a binding summary.
+
+### Scope Check Before File Modification
+
+Before modifying any file, verify it is within scope for this slice:
+1. Is it listed in `files_in_scope` (if provided)? → Proceed.
+2. Is it referenced in the slice's contracts? → Proceed.
+3. Is it within the slice's packages or deliverables in GRAPH.json? → Proceed.
+4. None of the above? → Write a justification or do not modify the file.
+
+### Attempt Tracking State
+
+Maintain this state and update it after every attempt:
+
+```yaml
+slice_id: ""
+test_name: ""
+attempt_count: 0
+files_touched: []
+description: ""
+last_error: ""
+checkpoint_tag: ""
+total_failed_attempts: 0
+```
+
+Increment `attempt_count` and `total_failed_attempts` only on test assertion failures. Infrastructure errors (build failures, missing environment variables, test runner crashes) do not count as attempts — fix them under deviation Rule 3, then re-run.
 
 ### Step 1: Read the Failure Output Carefully
 ```bash
@@ -167,11 +192,16 @@ Run just the failing test:
 ### Step 4: Fix and Verify
 Make the targeted fix, run that specific test, then run the full slice suite, then the full project suite.
 
-### Step 5: Know When to Stop
-If after 3 targeted attempts a test still fails:
-1. Document what you've tried
-2. Document what the failure says
-3. Report to orchestrator: "Test `{name}` fails after 3 attempts. Failure: `{error}`. Attempted: `{fixes}`. May need contract clarification or architectural decision."
+### Step 5: Circuit Breaker Thresholds
+
+**Per-test threshold:** If `attempt_count` reaches 3 for a specific test, the circuit trips for that test.
+
+**Slice ceiling:** If `total_failed_attempts` reaches 7, the circuit trips at the slice level.
+
+On any circuit trip:
+1. Produce a Diagnostic Report using the format in `references/circuit-breaker.md` (all 8 fields: `test_expectation`, `actual_error`, `attempt_log`, `cumulative_files_modified`, `scope_violations`, `best_hypothesis`, `specific_question`, `recovery_options`)
+2. STOP all implementation work
+3. Report to the orchestrator with the Diagnostic Report
 
 Do NOT:
 - Modify test files to make them pass

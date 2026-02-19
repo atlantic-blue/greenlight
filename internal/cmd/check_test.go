@@ -13,7 +13,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
-// buildTestContentFS creates a complete MapFS with all 32 manifest files for testing.
+// buildTestContentFS creates a complete MapFS with all 35 manifest files for testing.
 func buildTestContentFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -29,6 +29,7 @@ func buildTestContentFS() fstest.MapFS {
 		"commands/gl/add-slice.md":                 &fstest.MapFile{Data: []byte("# Add Slice\n")},
 		"commands/gl/assess.md":                    &fstest.MapFile{Data: []byte("# Assess\n")},
 		"commands/gl/changelog.md":                 &fstest.MapFile{Data: []byte("# Changelog\n")},
+		"commands/gl/debug.md":                     &fstest.MapFile{Data: []byte("# Debug\n")},
 		"commands/gl/design.md":                    &fstest.MapFile{Data: []byte("# Design\n")},
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
@@ -43,8 +44,10 @@ func buildTestContentFS() fstest.MapFS {
 		"commands/gl/status.md":                    &fstest.MapFile{Data: []byte("# Status\n")},
 		"commands/gl/wrap.md":                      &fstest.MapFile{Data: []byte("# Wrap\n")},
 		"references/checkpoint-protocol.md":        &fstest.MapFile{Data: []byte("# Checkpoint Protocol\n")},
+		"references/circuit-breaker.md":            &fstest.MapFile{Data: []byte("# Circuit Breaker\n")},
 		"references/deviation-rules.md":            &fstest.MapFile{Data: []byte("# Deviation Rules\n")},
 		"references/verification-patterns.md":      &fstest.MapFile{Data: []byte("# Verification Patterns\n")},
+		"references/verification-tiers.md":         &fstest.MapFile{Data: []byte("# Verification Tiers\n")},
 		"templates/config.md":                      &fstest.MapFile{Data: []byte("# Config Template\n")},
 		"templates/state.md":                       &fstest.MapFile{Data: []byte("# State Template\n")},
 		"CLAUDE.md":                                &fstest.MapFile{Data: []byte("# Greenlight CLAUDE.md\n\nTest content\n")},
@@ -123,7 +126,7 @@ func TestRunCheck_ReturnsZeroWhenAllFilesPresent_Local(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "all 32 files present") {
+	if !strings.Contains(output, "all 35 files present") {
 		t.Errorf("expected success message in output: %q", output)
 	}
 }
@@ -255,7 +258,7 @@ func TestRunCheck_WithVerifyFlag_PassesVerifyTrueToCheck(t *testing.T) {
 
 	output := buf.String()
 	// When verify=true, output should say "verified" instead of "present"
-	if !strings.Contains(output, "all 32 files verified") {
+	if !strings.Contains(output, "all 35 files verified") {
 		t.Errorf("expected 'verified' message (indicating verify=true), got: %q", output)
 	}
 }
@@ -292,7 +295,7 @@ func TestRunCheck_WithoutVerifyFlag_PassesVerifyFalseToCheck(t *testing.T) {
 
 	output := buf.String()
 	// Without --verify, should say "present" not "verified"
-	if !strings.Contains(output, "all 32 files present") {
+	if !strings.Contains(output, "all 35 files present") {
 		t.Errorf("expected 'present' message (indicating verify=false), got: %q", output)
 	}
 

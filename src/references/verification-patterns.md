@@ -6,6 +6,8 @@ How Greenlight verifies that slices actually work — not that agents said they 
 
 **Tests are the only judge.** Claude reviewing Claude is not verification. The test runner is the single source of truth. A slice is done when all tests pass, not when an agent reports success.
 
+**See also:** `references/verification-tiers.md` — defines the `auto` and `verify` tier system that determines whether a human acceptance checkpoint is required after tests pass.
+
 ## Three Levels of Verification
 
 ### Level 1: Existence

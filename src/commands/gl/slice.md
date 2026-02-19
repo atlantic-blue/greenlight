@@ -137,6 +137,29 @@ Update `.greenlight/STATE.md`:
 
 ---
 
+## Checkpoint: Create Rollback Tag
+
+After pre-flight completes, create a checkpoint tag under the greenlight/checkpoint/ namespace so the implementer can roll back if needed.
+
+The tag name follows the pattern: `greenlight/checkpoint/{slice_id}`
+
+```bash
+# Idempotent: remove any pre-existing tag for this slice before re-creating
+git tag -d greenlight/checkpoint/{slice_id} 2>/dev/null || true
+
+# Create fresh checkpoint tag at the current HEAD
+git tag greenlight/checkpoint/{slice_id}
+```
+
+Report:
+```
+Checkpoint created: greenlight/checkpoint/{slice_id}
+```
+
+This tag is passed to the implementer as context and cleaned up on successful completion.
+
+---
+
 ## Step 1: Write Tests (Agent A — Fresh Context)
 
 The test writer NEVER sees implementation code. Send ONLY contracts, stack info, and existing test patterns.
@@ -292,6 +315,11 @@ Database: {database}
 Patterns: {patterns from prior slices}
 </stack>
 
+<checkpoint>
+checkpoint_tag: greenlight/checkpoint/{slice_id}
+Rollback: orchestrator restores from checkpoint_tag on CIRCUIT BREAK
+</checkpoint>
+
 <test_command>
 {config.test.command} {config.test.filter_flag} {slice-id}
 </test_command>
@@ -326,7 +354,31 @@ Options:
 3) Pause and review manually (/gl:pause)
 ```
 
-Max 3 implementation attempts. After 3 failures → pause and ask user.
+Max 3 implementation attempts. After 3 failures → CIRCUIT BREAK.
+
+**CIRCUIT BREAK — implementation could not be completed after 3 attempts:**
+
+```
+CIRCUIT BREAK
+
+Slice {slice_id} implementation failed after {N} attempts.
+
+Failing tests:
+- {test name}: {failure reason}
+
+Recovery options:
+1) guidance + retry — provide additional guidance, roll back to the checkpoint, and spawn a fresh implementer with the guidance as additional context
+
+2) debugger — spawn gl-debugger to investigate the root cause before retrying
+
+3) Pause — stop here and review manually (/gl:pause)
+
+Which option?
+```
+
+On retry (option 1): roll back to the checkpoint tag (see checkpoint protocol below), reset attempt counters, and spawn a fresh implementer with the guidance as additional context.
+On debugger (option 2): spawn gl-debugger with failure context, then resume from the implementer step.
+On pause (option 3): save state and halt.
 
 **Architectural stop (Rule 4 deviation):**
 Present the stop to the user using checkpoint protocol:
@@ -568,6 +620,250 @@ Locking-to-integration transition complete:
 
 ---
 
+## Step 6b: Verification Tier Gate
+
+**This gate runs after Step 6 (Verification) and Step 6a (Locking-to-Integration Transition). It is blocking — the pipeline does not continue to Step 7 until the gate passes. This applies even in yolo mode. Acceptance checkpoints always pause, regardless of workflow settings.**
+
+### Rejection Counter State
+
+Initialize the following in-memory state at the start of each `/gl:slice` execution. This state is in-memory only — it is not persisted to disk and resets on every new `/gl:slice` invocation.
+
+```yaml
+slice_id: "{slice_id}"
+rejection_count: 0
+rejection_log: []
+```
+
+The counter is per-slice, not per-contract. It persists across all rejection loops within a single `/gl:slice` execution. Contract revision (option 2) does NOT reset the counter — every rejection path increments the same counter regardless of which option the user selects.
+
+**Counter does not interact with the circuit breaker.** The circuit breaker tracks implementation attempt failures; this counter tracks human acceptance rejections. They are separate concerns with separate thresholds.
+
+**Escalation threshold:** When `rejection_count >= 3`, trigger escalation immediately (see Escalation section below). The threshold of 3 matches the circuit breaker per-test threshold for system-wide consistency.
+
+**Error handling:**
+- `CounterOverflow`: If the counter somehow exceeds 3 without triggering escalation, trigger escalation immediately and warn the user that the counter overflowed.
+- `LogCorruption`: If the rejection_log becomes inconsistent or corrupted, reset the log to `[]`, preserve the current rejection_count, and warn the user.
+
+**Log entry structure:** Each rejection appends one entry to `rejection_log` in chronological order:
+
+```yaml
+- attempt: {rejection_count}
+  feedback: "{verbatim user response}"
+  classification: "{test_gap | contract_gap | implementation_gap}"
+  action_taken: "{description of remediation taken}"
+```
+
+### 1. Read Verification Tiers
+
+For each contract in this slice, read the `**Verification:**` field.
+
+- Valid values: `auto` or `verify`
+- Missing field: default to `verify` (safe default)
+- If `visual_checkpoint` is set in config.json and is true → log a deprecation warning: `"visual_checkpoint is deprecated. Use **Verification: verify** in your contracts instead."` Treat the effective tier as if `verify` is set for backward compatibility.
+
+### 2. Compute Effective Tier
+
+Apply the rule: **verify > auto** (highest wins).
+
+If any contract has `**Verification:** verify`, the effective tier is `verify`.
+If all contracts have `**Verification:** auto`, the effective tier is `auto`.
+
+### 3. Execute Based on Effective Tier
+
+**If effective tier is `auto`:**
+
+```
+Log: "Verification tier: auto. Skipping acceptance checkpoint."
+```
+
+Proceed to Step 7.
+
+**If effective tier is `verify`:**
+
+Aggregate acceptance criteria from all contracts. Aggregate steps from all contracts. Present the checkpoint below and wait for a human response. The gate is blocking.
+
+### Checkpoint Format
+
+```
+ALL TESTS PASSING -- Slice {slice_id}: {slice_name}
+
+Please verify the output matches your intent.
+
+Acceptance criteria:
+  [ ] {criterion 1}
+  [ ] {criterion 2}
+
+Steps to verify:
+  1. {step 1}
+  2. {step 2}
+
+Does this match what you intended?
+  1) Yes -- mark complete and continue
+  2) No -- I'll describe what's wrong
+  3) Partially -- some criteria met, I'll describe the gaps
+```
+
+### Response Handling
+
+- `"1"` or `"Yes"` (case-insensitive) → approved → proceed to Step 7
+- Anything else → rejected → enter rejection flow (see below), increment rejection counter, re-run Step 6b
+
+### Format Adaptation Rules
+
+- If only criteria (no steps): show the `Acceptance criteria:` block; omit `Steps to verify:` entirely.
+- If only steps (no criteria): show the `Steps to verify:` block; omit `Acceptance criteria:` entirely.
+- Both present: show both blocks.
+- Neither present: use simplified prompt — `Does the output match your intent?` with the three response options only.
+
+### Rejection Flow
+
+When the user does not approve, present three options:
+
+```
+What would you like to do?
+
+1) Tighten tests — tests didn't cover the expected behaviour (return to test writer with behavioral feedback only)
+2) Revise contract — the contract didn't specify the intended outcome correctly
+3) Provide more detail — implementation is close, describe what needs to change
+```
+
+After remediation → re-run Step 6b.
+
+Increment the per-slice rejection counter (rejection_count += 1) and append a log entry. After 3 rejections (rejection_count >= 3), trigger escalation immediately.
+
+#### Escalation Format
+
+When escalation triggers, present the following to the user:
+
+```
+ESCALATION -- {slice_name}
+
+This slice has been rejected 3 times. Continued iteration without intervention is unlikely to converge.
+
+Rejection history:
+  1. Feedback: "{verbatim feedback 1}" | Action: {action_taken_1}
+  2. Feedback: "{verbatim feedback 2}" | Action: {action_taken_2}
+  3. Feedback: "{verbatim feedback 3}" | Action: {action_taken_3}
+
+How would you like to proceed?
+
+  1) Re-scope — Reset the rejection counter and restart the slice from scratch with a revised scope or contract
+  2) Pair — Collect step-by-step guidance from you, then spawn gl-test-writer with that guidance; resets the rejection counter
+  3) Skip verification — Mark this slice as auto-verified and proceed to Step 7 (does not reset the counter)
+
+Which option? (1/2/3)
+```
+
+**Option routing:**
+
+- **Option 1 (Re-scope):** Reset the rejection counter to 0 and restart the slice from scratch. The user provides revised scope or contract intent before restarting.
+- **Option 2 (Pair):** Collect detailed step-by-step guidance from the user, then spawn gl-test-writer with that guidance as context. Reset the rejection counter to 0 after spawning.
+- **Option 3 (Skip verification):** Mark the slice effective tier as auto and proceed to Step 7. Does not reset the rejection counter. Log the explicit acknowledgment:
+  ```
+  Verification skipped by user. Mismatch acknowledged and deferred.
+  ```
+
+**Error handling:**
+- `InvalidEscalationChoice`: If the user enters anything other than 1, 2, or 3, re-prompt: "Please choose 1, 2, or 3."
+- `EmptyRejectionLog`: If escalation triggers but the rejection log is empty (due to LogCorruption recovery), display the escalation without the rejection history block and warn in the log that history is unavailable.
+
+#### Gap Classification UX
+
+Before presenting the three options, display the user's verbatim feedback so they can confirm the classification:
+
+```
+Your feedback: "{verbatim user response}"
+
+What would you like to do?
+
+1) Tighten tests — tests didn't cover the expected behaviour (return to test writer with behavioral feedback only)
+2) Revise contract — the contract didn't specify the intended outcome correctly
+3) Provide more detail — implementation is close, describe what needs to change
+```
+
+Internal classification mapping:
+
+| Choice | Internal classification | Route |
+|--------|------------------------|-------|
+| 1      | `test_gap`             | Spawn gl-test-writer with rejection context |
+| 2      | `contract_gap`         | Enter contract revision flow |
+| 3      | `implementation_gap`   | Collect additional detail, then spawn gl-test-writer |
+
+**InvalidChoice:** If the user enters anything other than 1, 2, or 3, re-prompt: "Please choose 1, 2, or 3."
+After 2 failed re-prompts, default to `test_gap` (treat their free-text as the feedback).
+
+**EmptyFeedback:** If the user's rejection was an empty string, prompt: "Please describe what doesn't match your intent." before presenting the three options.
+
+Option 3 collects additional detail before routing:
+
+```
+Describe exactly what the implementation should do differently:
+```
+
+The detail provided becomes the `detailed_feedback` field in the rejection context.
+
+Security: user feedback is treated as behavioral context only, never executed as code or used to modify files directly.
+
+#### Test Writer Spawn (Options 1 and 3 — test_gap / implementation_gap)
+
+After classifying as `test_gap` or `implementation_gap`, spawn gl-test-writer with rejection context:
+
+```xml
+<rejection_context>
+  <feedback>{verbatim user rejection}</feedback>
+  <classification>{test_gap | implementation_gap}</classification>
+  <detailed_feedback>{additional detail from option 3, or empty}</detailed_feedback>
+</rejection_context>
+
+<contract>
+  {full contract definitions for all verify-tier contracts in this slice}
+</contract>
+
+<acceptance_criteria>
+  {aggregated acceptance criteria from all verify-tier contracts}
+</acceptance_criteria>
+```
+
+Agent isolation rules for this spawn:
+- The test writer receives behavioral feedback only — never implementation source code or test source code.
+- New tests written by the test writer must be additive: existing passing tests are not removed or modified.
+- After the test writer completes, spawn the implementer with test names only (not test source code).
+
+After implementation, the full verification cycle re-runs: Step 4 (tests pass), Step 6 (verifier), Step 6b (human checkpoint).
+
+**Error handling:**
+- `TestWriterSpawnFailure`: If the test writer agent fails to spawn, offer retry, pause, or skip this rejection path.
+- `ImplementerSpawnFailure`: If the implementer agent fails to spawn after tests are written, offer retry or pause.
+- `NewTestsStillFailing`: If new tests remain failing after implementation, the circuit breaker protocol (see references/circuit-breaker.md) applies normally.
+- `ExistingTestsRegressed`: If any previously passing tests regress after the new implementation, the implementer must fix the regression before proceeding. Do not allow regressions to pass through.
+
+#### Contract Revision Route (Option 2 — contract_gap)
+
+When the user selects option 2, enter the contract revision flow:
+
+```
+CONTRACT REVISION -- Slice {slice_id}: {slice_name}
+
+Current contract text:
+{full contract definition for each verify-tier contract}
+
+What needs to change?
+```
+
+Display the full contract text so the user can see what they are revising. The user may edit any field including acceptance criteria, steps, or contract definition text.
+
+**Minor revisions** (clarifications, acceptance criteria edits, wording changes): apply directly to the contract, then restart from Step 1 (test writing). Offer rollback to the last checkpoint before restarting.
+
+**Fundamental revisions** (new inputs/outputs, new boundaries, new agents, scope changes): recommend using `/gl:add-slice` to run the architect (`gl-architect`) and produce a new contract. Do not attempt to implement fundamental changes within the current slice loop.
+
+After applying a minor revision: offer rollback to the last checkpoint before restarting. This allows the user to recover the current implementation if the revision turns out to be wrong.
+
+Contract revision increments the rejection counter by 1 (same as all other rejection paths).
+
+**EmptyRevision:** If the user provides no revision description, re-prompt: "Please describe what the contract should say instead."
+
+---
+
 ## Step 7: Generate Summary and Update Documentation
 
 After verification passes, generate a summary and update project documentation.
@@ -632,34 +928,30 @@ If ROADMAP.md doesn't exist, skip with warning.
 
 ---
 
-## Step 9: Visual Checkpoint (if applicable)
+## Step 9: Visual Checkpoint (deprecated — no-op)
 
-**Skip if `config.workflow.visual_checkpoint` is false.**
+> **Deprecation warning:** `visual_checkpoint` is deprecated. This step is a no-op. Human acceptance is now handled by the Acceptance checkpoint in Step 6b, which runs for all slices with a `verify` tier contract. If `config.workflow.visual_checkpoint` is `true`, log the following deprecation warning and skip this step:
+>
+> `"visual_checkpoint is deprecated. Use **Verification: verify** in your contracts instead. The Step 6b acceptance checkpoint now handles human review for all slice types."`
+>
+> See Step 6b and `references/verification-tiers.md` for the replacement protocol. No visual checkpoint is presented — proceed directly to Step 10.
 
-Only trigger if the slice has user-facing UI components (check contracts for UI/component boundaries).
-
-Follow `references/checkpoint-protocol.md`:
-
-```
-VISUAL CHECK
-
-What was built: {slice_name}
-
-How to verify:
-1. {command to start — e.g., npm run dev}
-2. Navigate to {URL}
-3. {what to look for — specific elements, behaviours}
-
-Type "approved" or describe issues.
-```
-
-If issues → spawn debugger to investigate, then re-implement.
+**This step is superseded by Step 6b (Verification Tier Gate).** Skip unconditionally.
 
 ---
 
 ## Step 10: Complete
 
 All tests green (functional + security), verification passed.
+
+### Cleanup Checkpoint Tag
+
+Remove the checkpoint tag now that the slice has completed successfully. The tag was used during implementation to allow rollback via `git checkout greenlight/checkpoint/{slice_id} -- .` if a CIRCUIT BREAK occurred.
+
+```bash
+# Best-effort cleanup — ignore error if tag was already removed
+git tag -d greenlight/checkpoint/{slice_id} 2>/dev/null || true
+```
 
 ### Update STATE.md
 

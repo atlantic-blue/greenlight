@@ -26,18 +26,30 @@ Mode: yolo
 | S-15 | Roadmap Command | complete | 29 | 0 | S-13 |
 | S-16 | Changelog Command | complete | 30 | 0 | S-13 |
 | S-17 | Brownfield-Roadmap Integration | complete | 20 | 0 | S-12, S-15 |
+| S-18 | Circuit Breaker Protocol + Implementer | complete | 17 | 0 | none |
+| S-19 | Checkpoint Tags + Rollback | complete | 8 | 0 | S-18 |
+| S-20 | Debug Command | complete | 8 | 0 | S-18 |
+| S-21 | Infrastructure Integration | complete | 8 | 0 | S-18, S-20 |
+| S-22 | Schema Extension | complete | 24 | 0 | none |
+| S-23 | Verification Gate | complete | 37 | 0 | S-22 |
+| S-24 | Rejection Flow | complete | 48 | 0 | S-23 |
+| S-25 | Rejection Counter | complete | 53 | 0 | S-23 |
+| S-26 | Documentation and Deprecation | complete | 31 | 0 | S-23 |
+| S-27 | Architect Integration | complete | 60 | 0 | S-22 |
 
-Progress: [█████████████████] 17/17 slices
+Progress: [███████████████████████████] 27/27 slices
 
 ## Current
 
-Building documentation features.
-Last activity: 2026-02-09 — S-17 complete (brownfield-roadmap integration). ALL SLICES COMPLETE.
+Milestone: verification-tiers — COMPLETE
+Slice: All slices complete
+Step: done
+Last activity: 2026-02-19 — S-27 (Architect Integration) complete
 
 ## Test Summary
 
-Total: 415 passing, 0 failing, 0 security
-Last run: 2026-02-09
+Total: 710 passing, 0 failing, 0 security
+Last run: 2026-02-19
 
 ## Decisions
 
@@ -50,6 +62,21 @@ Last run: 2026-02-09
 - UD-3: File mapping always + coverage optional
 - UD-4: Separate Wrapped Boundaries section in STATE.md
 - UD-5: Markdown content tests read actual src/ files via os.ReadFile
+- D-15: Scope lock inferred from contracts with optional GRAPH.json override
+- D-16: Per-test (3) + slice ceiling (7) attempt tracking
+- D-17: Rollback via lightweight git tags
+- D-18: /gl-debug standalone, structured for future integration
+- D-19: 5-line CLAUDE.md rule + references/circuit-breaker.md protocol
+- D-20: Diagnostic report as structured fields rendered as markdown
+- D-21: Slice ceiling at 7 total failures
+- D-22: Checkpoint tags cleaned up at slice completion
+- D-23: Rejection feedback isolation (behavioral only, no impl details)
+- D-24: Tier resolution: verify > auto, one checkpoint per slice
+- D-25: visual_checkpoint deprecated, tiers in contracts supersede
+- D-26: Rejection counter per-slice, escalation at 3
+- D-27: Gap classification via actionable options
+- D-28: New references/verification-tiers.md file
+- D-29: Two tiers (auto/verify) not three
 
 ## Blockers
 
@@ -57,5 +84,5 @@ None
 
 ## Session
 
-Last session: 2026-02-09
+Last session: 2026-02-19
 Resume file: None
