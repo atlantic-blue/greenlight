@@ -138,7 +138,7 @@ graph TD
 
 **Summary:** 6 slices, 253 additional tests (710 total). Verification tiers close the gap between "tests pass" and "user got what they asked for."
 
-## Milestone: parallel-state [in-progress]
+## Milestone: parallel-state [complete]
 
 **Goal:** Fix concurrent session state corruption by replacing the single STATE.md with per-slice state files. Each session writes only to its own slice's file, eliminating write conflicts by design. STATE.md becomes a generated summary view. Backward compatible with existing projects.
 
@@ -150,7 +150,7 @@ graph TD
 | S-31 | Supporting command updates | complete | 74 | 2026-02-22 | All 6 commands gain state detection, format-aware read/write paths |
 | S-32 | Migration command (/gl:migrate-state) | complete | 55 | 2026-02-22 | One-way explicit migration, all-or-nothing atomicity, backup preserved |
 | S-33 | Documentation and CLAUDE.md | complete | 22 | 2026-02-22 | State format awareness hard rule, both formats documented |
-| S-34 | Manifest integration and verification | pending | - | - | +3 manifest entries, end-to-end verification |
+| S-34 | Manifest integration and verification | complete | 11 | 2026-02-22 | +3 manifest entries (35→38), all buildTestFS helpers updated |
 
 ## Milestone: cli-hardening [planning]
 
