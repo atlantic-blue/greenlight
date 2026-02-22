@@ -1,7 +1,7 @@
 # Product Roadmap
 
 Project: greenlight
-Updated: 2026-02-19
+Updated: 2026-02-22
 
 ## Architecture
 
@@ -22,9 +22,9 @@ graph TD
 
     subgraph Embedded["Embedded Content (src/)"]
         Agents["agents/*.md<br/>(10 agent definitions)"]
-        Commands["commands/gl/*.md<br/>(17 command definitions)"]
-        References["references/*.md<br/>(5 reference docs)"]
-        Templates["templates/*.md<br/>(2 templates)"]
+        Commands["commands/gl/*.md<br/>(18 command definitions)"]
+        References["references/*.md<br/>(6 reference docs)"]
+        Templates["templates/*.md<br/>(3 templates)"]
         ClaudeMD["CLAUDE.md<br/>(engineering standards)"]
     end
 
@@ -37,7 +37,9 @@ graph TD
 
     subgraph Runtime[".greenlight/ (runtime state)"]
         Config["config.json"]
-        State["STATE.md"]
+        SlicesDir["slices/*.md<br/>(per-slice state)"]
+        ProjectState["project-state.json<br/>(non-slice state)"]
+        State["STATE.md<br/>(generated summary)"]
         Contracts["CONTRACTS.md"]
         Graph["GRAPH.json"]
         Design["DESIGN.md"]
@@ -135,6 +137,20 @@ graph TD
 | S-27 | Architect integration: tier generation guidance | complete | 60 | 2026-02-19 | Verification Tier Selection section + 4 output checklist items |
 
 **Summary:** 6 slices, 253 additional tests (710 total). Verification tiers close the gap between "tests pass" and "user got what they asked for."
+
+## Milestone: parallel-state [in-progress]
+
+**Goal:** Fix concurrent session state corruption by replacing the single STATE.md with per-slice state files. Each session writes only to its own slice's file, eliminating write conflicts by design. STATE.md becomes a generated summary view. Backward compatible with existing projects.
+
+| Slice | Description | Status | Tests | Completed | Key Decision |
+|-------|-------------|--------|-------|-----------|--------------|
+| S-28 | Slice state template and reference docs | complete | 93 | 2026-02-22 | Flat key-value frontmatter, state-format.md detection logic |
+| S-29 | Init command and state detection | complete | 43 | 2026-02-22 | Directory existence check, slices/ dir + project-state.json |
+| S-30 | Slice command state write | pending | - | - | Immediate session claim, own-file writes only, STATE.md regen |
+| S-31 | Supporting command updates | pending | - | - | status/pause/resume/ship/add-slice/quick all use state detection |
+| S-32 | Migration command (/gl:migrate-state) | pending | - | - | One-way explicit migration, STATE.md.backup preserved |
+| S-33 | Documentation and CLAUDE.md | pending | - | - | State format awareness rule, both formats documented |
+| S-34 | Manifest integration and verification | pending | - | - | +3 manifest entries, end-to-end verification |
 
 ## Milestone: cli-hardening [planning]
 
