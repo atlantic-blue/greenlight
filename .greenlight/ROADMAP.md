@@ -148,7 +148,7 @@ graph TD
 | S-29 | Init command and state detection | complete | 43 | 2026-02-22 | Directory existence check, slices/ dir + project-state.json |
 | S-30 | Slice command state write | complete | 42 | 2026-02-22 | Immediate session claim, own-file writes only, STATE.md regen |
 | S-31 | Supporting command updates | complete | 74 | 2026-02-22 | All 6 commands gain state detection, format-aware read/write paths |
-| S-32 | Migration command (/gl:migrate-state) | pending | - | - | One-way explicit migration, STATE.md.backup preserved |
+| S-32 | Migration command (/gl:migrate-state) | complete | 55 | 2026-02-22 | One-way explicit migration, all-or-nothing atomicity, backup preserved |
 | S-33 | Documentation and CLAUDE.md | pending | - | - | State format awareness rule, both formats documented |
 | S-34 | Manifest integration and verification | pending | - | - | +3 manifest entries, end-to-end verification |
 
