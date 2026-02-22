@@ -4612,3 +4612,1209 @@ Dependencies: C-62 (contract format must include verification fields)
 | 3. When user rejects, feedback routes through the test writer (TDD-correct) to produce new tests that catch the mismatch | S-24 | C-67, C-68, C-69 | Rejection classification + test writer routing + contract revision |
 | 4. After 3 rejections on a slice, escalation triggers with options: re-scope, pair, or skip | S-25 | C-70, C-71 | Rejection counter + escalation |
 | 5. Slice with auto tier behaves exactly as today -- no regression | S-23, S-26 | C-65, C-72, C-73 | Verification gate auto path + CLAUDE.md rule + checkpoint deprecation |
+
+---
+
+# Parallel State Milestone Contracts
+
+> **Scope:** Fix concurrent session state corruption by replacing single STATE.md with per-slice state files
+> **Deliverables:** 3 new markdown files, 11 modified markdown files, 3 Go manifest entries
+> **Date:** 2026-02-22
+> **Design Reference:** DESIGN.md (parallel-state): FR-1 through FR-10, NFR-1 through NFR-4, D-30 through D-38
+
+---
+
+## Parallel State Contract Index
+
+| # | Contract | Boundary | Slice |
+|---|----------|----------|-------|
+| C-76 | SliceStateTemplate | Template file -> Agents (slice state schema and lifecycle) | S-28 |
+| C-77 | StateFormatReference | Reference doc -> All commands (state detection, concurrency, backward compat) | S-28 |
+| C-78 | InitSliceDirectory | /gl:init orchestrator -> Filesystem (slices/ directory + slice files) | S-29 |
+| C-79 | InitProjectState | /gl:init orchestrator -> Filesystem (project-state.json) | S-29 |
+| C-80 | InitStateDetection | All commands -> State detection logic (format resolution) | S-29 |
+| C-81 | SliceCommandStateWrite | /gl:slice orchestrator -> Filesystem (own slice file + STATE.md regeneration) | S-30 |
+| C-82 | SliceSessionTracking | /gl:slice orchestrator -> Slice file frontmatter (advisory session field) | S-30 |
+| C-83 | StatusSliceAggregation | /gl:status command -> Filesystem (read all slice files, compute summary) | S-31 |
+| C-84 | SupportingCommandStateAdaptation | Supporting commands -> State detection + slice file reads/writes | S-31 |
+| C-85 | MigrateStateCommand | User -> /gl:migrate-state command (legacy STATE.md to file-per-slice) | S-32 |
+| C-86 | MigrateStateBackup | /gl:migrate-state -> Filesystem (backup + atomic creation) | S-32 |
+| C-87 | CLAUDEmdStateFormatRule | CLAUDE.md -> All agents (state format awareness hard rule) | S-33 |
+| C-88 | StateTemplateDocUpdate | templates/state.md -> Both formats documented | S-33 |
+| C-89 | CheckpointProtocolStateUpdate | checkpoint-protocol.md -> Slice file references for state context | S-33 |
+| C-90 | ManifestParallelStateUpdate | Go CLI -> Manifest (3 new file paths) | S-34 |
+
+---
+
+## S-28: Slice State Foundation Documents
+
+*User Actions:*
+- *1. Run multiple /gl:slice sessions in parallel without state corruption (foundation)*
+- *2. See accurate slice status across all concurrent sessions (foundation)*
+
+### C-76: SliceStateTemplate
+
+```
+Contract: SliceStateTemplate
+Boundary: Template file -> Agents (slice state file schema and lifecycle)
+Slice: S-28 (Slice State Foundation Documents)
+Design refs: FR-1, FR-7, FR-9, D-30, D-33, D-36, DESIGN.md 4.2, 4.3
+
+FILE SPECIFICATION: src/templates/slice-state.md (~120 lines)
+
+This is the authoritative template defining the schema, lifecycle, and
+examples for per-slice state files stored in .greenlight/slices/{id}.md.
+Agents reference this template when creating or updating slice state files.
+
+Output (mandatory sections in the template):
+
+  1. Schema Definition
+     - Frontmatter field definitions (flat key-value between --- delimiters)
+     - Fields: id, status, step, milestone, started, updated, tests,
+       security_tests, session, deps
+     - Field types, allowed values, required/optional status
+     - Per D-30: flat key-value only, no nesting
+
+  2. Status Lifecycle
+     - Valid status values: pending, ready, tests, implementing, security,
+       fixing, verifying, complete
+     - Valid step values: none, tests, implementing, security, fixing,
+       verifying, complete
+     - Transition rules: which status transitions are valid
+     - Each status maps to a step in the TDD loop
+
+  3. Session Tracking
+     - Advisory session field format: ISO timestamp + random suffix
+       (e.g., 2026-02-22T14:00:00Z-a7f3)
+     - Per D-33: advisory only, not blocking
+     - Session field set on slice claim, cleared on completion
+     - Other sessions can read this field to detect active work
+
+  4. Body Sections
+     - Heading: # {slice-id}: {slice-name}
+     - ## Why (rationale for the slice)
+     - ## What (what the slice delivers)
+     - ## Dependencies (slice dependencies with status)
+     - ## Contracts (contract references for the slice)
+     - ## Decisions (runtime decisions made during implementation)
+     - ## Files (files created or modified by the slice)
+
+  5. File Naming
+     - Per D-36: files named {slice-id}.md (e.g., S-28.md)
+     - Directory: .greenlight/slices/
+     - One file per slice, one writer per file at a time
+
+  6. Examples
+     - Complete example of a new slice file (status: pending)
+     - Complete example of an in-progress slice file (status: implementing)
+     - Complete example of a completed slice file (status: complete)
+
+Input: None (static template, read by agents)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | InvalidSliceId | Slice ID does not match S-{digits} or S-{digits}.{digits} pattern | Reject file creation. Error: "Invalid slice ID: {id}. Must match S-{N} or S-{N}.{N}" |
+  | InvalidStatus | Status field has unrecognised value | Reject update. Error: "Invalid status: {value}. Valid values: pending, ready, tests, implementing, security, fixing, verifying, complete" |
+  | InvalidFrontmatter | Frontmatter is not flat key-value between --- delimiters | Reject parse. Error: "Invalid frontmatter format. Expected flat key: value pairs between --- delimiters" |
+
+Invariants:
+  - Template is read-only at runtime (no agent writes to it)
+  - Frontmatter is flat key-value only (no nesting, no arrays in values except deps which is comma-separated)
+  - All field names are lowercase with underscores
+  - Status enum is closed: only the 8 listed values are valid
+  - Step enum is closed: only the 7 listed values are valid
+  - Session field format is exactly: ISO timestamp + hyphen + random alphanumeric suffix
+  - Slice ID validation prevents path traversal (S-../../etc/passwd is rejected)
+  - Body sections are human-readable documentation, not machine-parsed state
+  - Template matches DESIGN.md 4.2 schema exactly
+
+Security:
+  - Slice ID validation prevents path traversal attacks
+  - No sensitive data in slice files (status, test counts, file lists only)
+  - Session field is advisory only (no access control)
+
+Verification: auto
+Dependencies: None (this is the foundation document for the milestone)
+```
+
+### C-77: StateFormatReference
+
+```
+Contract: StateFormatReference
+Boundary: Reference doc -> All commands (state detection, concurrency, backward compat)
+Slice: S-28 (Slice State Foundation Documents)
+Design refs: FR-2, FR-5, FR-8, FR-10, NFR-1, NFR-4, D-31, D-34, D-37, DESIGN.md 4.5, 4.6
+
+FILE SPECIFICATION: src/references/state-format.md (~100 lines)
+
+This is the authoritative reference document for state format detection,
+migration protocol, backward compatibility rules, concurrent access
+patterns, STATE.md regeneration, and advisory session tracking. All
+commands reference this document before reading or writing state.
+
+Output (mandatory sections in the reference doc):
+
+  1. State Format Detection
+     - Per D-31: check .greenlight/slices/ directory existence
+     - Detection flow:
+       a. If .greenlight/slices/ exists -> file-per-slice format
+       b. Else if .greenlight/STATE.md exists -> legacy format
+       c. Else -> no state, suggest /gl:init
+     - Every command that reads state MUST follow this detection flow
+     - Detection is a single directory existence check (no file parsing)
+
+  2. File-Per-Slice Format
+     - Directory: .greenlight/slices/
+     - Files: {slice-id}.md (one per slice)
+     - Schema: defined in templates/slice-state.md
+     - Project state: .greenlight/project-state.json
+     - Summary view: .greenlight/STATE.md (generated, not source of truth)
+
+  3. Legacy Format
+     - Single file: .greenlight/STATE.md (source of truth)
+     - Per D-37: supported indefinitely
+     - Commands work identically regardless of format
+     - Migration via /gl:migrate-state (D-32: explicit, not automatic)
+
+  4. Concurrent Access Patterns
+     - Each session writes only to its own slice file
+     - No shared mutable file for slice state
+     - Per NFR-1: no file locking required
+     - Advisory session tracking: session field in frontmatter
+     - Warn before claiming a slice with active session field
+
+  5. STATE.md Regeneration
+     - Per D-34: regenerated after every state write operation
+     - Generated STATE.md has header comment:
+       <!-- GENERATED by greenlight -- source of truth is .greenlight/slices/*.md -->
+     - Format: overview from project-state.json + slice table from all
+       slice files + current section + test summary + blockers
+     - Matches DESIGN.md 4.6 format exactly
+
+  6. Crash Safety
+     - Per NFR-4: write-to-temp-then-rename pattern
+     - Temp files in .greenlight/slices/ (same filesystem for atomic rename)
+     - POSIX rename atomicity guarantees
+
+  7. Backward Compatibility
+     - Per D-37: both formats supported indefinitely
+     - Per D-38: no dual-write period
+     - Detection is zero-cost (single directory check)
+
+Input: None (static reference, read by commands and agents)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoStateFound | Neither slices/ nor STATE.md exists | Return NoStateError. Commands should suggest /gl:init |
+  | CorruptSliceFile | A slice file has invalid frontmatter | Skip the corrupt file. Warn: "Skipping corrupt slice file: {filename}. Run /gl:init to recreate." Include remaining valid files in aggregation |
+  | SlicesDirectoryEmpty | slices/ exists but contains no .md files | Treat as file-per-slice format with zero slices. Commands can proceed (e.g., /gl:add-slice creates the first file) |
+
+Invariants:
+  - Reference doc is read-only at runtime (no agent writes to it)
+  - Detection logic is deterministic: same filesystem state always produces same result
+  - Legacy format support is indefinite (D-37)
+  - No automatic migration (D-32)
+  - STATE.md regeneration is mandatory after every write in file-per-slice mode (D-34)
+  - Concurrent sessions never touch the same slice file (design guarantee)
+  - Crash safety uses write-to-temp-then-rename (NFR-4)
+  - Detection and format rules are the single source of truth for all commands
+
+Security:
+  - No security impact. Static reference document.
+  - Slice ID validation rules referenced from C-76 apply here too.
+
+Verification: auto
+Dependencies: None (self-contained reference document)
+```
+
+---
+
+## S-29: Init Command and State Detection
+
+*User Actions:*
+- *1. Run multiple /gl:slice sessions in parallel without state corruption (new projects use file-per-slice from day one)*
+
+### C-78: InitSliceDirectory
+
+```
+Contract: InitSliceDirectory
+Boundary: /gl:init orchestrator -> Filesystem (slices/ directory + individual slice files)
+Slice: S-29 (Init Command and State Detection)
+Design refs: FR-1, FR-2, D-36, DESIGN.md 4.1, 4.2, 5.3
+
+COMMAND UPDATE: src/commands/gl/init.md — Phase 6: create slices/ and slice files
+
+In file-per-slice mode, /gl:init creates the .greenlight/slices/
+directory and writes individual slice state files instead of the
+monolithic STATE.md. Each slice defined in GRAPH.json gets its own
+file in .greenlight/slices/{id}.md.
+
+Behaviour:
+
+  1. Create .greenlight/slices/ directory (permissions 0o755)
+
+  2. For each slice in GRAPH.json:
+     a. Validate slice ID matches S-{digits} pattern
+     b. Create .greenlight/slices/{id}.md with:
+        - Frontmatter: id, status (pending), step (none), milestone,
+          started (empty), updated (current ISO timestamp), tests (0),
+          security_tests (0), session (empty), deps (from GRAPH.json)
+        - Body: heading with slice name, empty body sections
+     c. Use write-to-temp-then-rename for crash safety (NFR-4)
+
+  3. Generate .greenlight/STATE.md as summary view:
+     - Header comment: <!-- GENERATED by greenlight -->
+     - Computed from all slice files per DESIGN.md 4.6 format
+
+Input:
+  - GRAPH.json (slice definitions with IDs, names, dependencies)
+  - Milestone name from design phase
+
+Output:
+  - .greenlight/slices/ directory created
+  - One .md file per slice in .greenlight/slices/
+  - .greenlight/STATE.md generated as summary view
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | SlicesDirExists | .greenlight/slices/ already exists | Warn user. Offer to overwrite or skip. Do not silently overwrite |
+  | InvalidSliceIdInGraph | GRAPH.json contains slice ID not matching S-{digits} | Skip invalid slice. Warn: "Skipping invalid slice ID: {id}" |
+  | DirectoryCreateFailure | Cannot create .greenlight/slices/ directory | Report error. Abort init. Suggest checking permissions |
+  | FileWriteFailure | Cannot write a slice file | Report error for that file. Continue with remaining slices. Warn user of partial state |
+
+Invariants:
+  - Directory permissions are 0o755, file permissions are 0o644
+  - Each slice file follows the schema in templates/slice-state.md (C-76)
+  - Slice IDs are validated before file creation (path traversal prevention)
+  - All slice files are created atomically (write-to-temp-then-rename)
+  - STATE.md is generated after all slice files are written
+  - Existing /gl:init behaviour for non-state operations is unchanged
+  - If /gl:init was already run with legacy format, this does NOT auto-migrate
+    (user must run /gl:migrate-state per D-32)
+
+Security:
+  - Slice ID validation prevents path traversal (C-76 rules)
+  - File permissions follow existing conventions
+  - No sensitive data in created files
+
+Verification: verify
+Acceptance Criteria:
+- After /gl:init, .greenlight/slices/ directory exists with one .md file per slice from GRAPH.json
+- Each slice file has valid frontmatter with status pending and step none
+- STATE.md is generated with the GENERATED header comment and a table of all slices
+- Existing /gl:init functionality (config, CONTRACTS.md, etc.) is unchanged
+
+Steps:
+- Run /gl:init on a new project with a GRAPH.json containing 3+ slices
+- Verify .greenlight/slices/ directory exists
+- Open any slice file and verify frontmatter matches templates/slice-state.md schema
+- Open STATE.md and verify it has the GENERATED comment header
+
+Dependencies: C-76 (slice state schema must be defined), C-77 (state format rules must be defined)
+```
+
+### C-79: InitProjectState
+
+```
+Contract: InitProjectState
+Boundary: /gl:init orchestrator -> Filesystem (project-state.json)
+Slice: S-29 (Init Command and State Detection)
+Design refs: FR-4, D-35, DESIGN.md 4.4
+
+COMMAND UPDATE: src/commands/gl/init.md — Create project-state.json
+
+/gl:init creates .greenlight/project-state.json to store non-slice state:
+project overview, session metadata, and active blockers.
+
+Behaviour:
+
+  1. Create .greenlight/project-state.json with:
+     ```json
+     {
+       "overview": {
+         "value_prop": "{from design phase}",
+         "stack": "{from design phase}",
+         "mode": "{from config.json or default yolo}"
+       },
+       "session": {
+         "last_session": "{current ISO timestamp}",
+         "resume_file": null
+       },
+       "blockers": []
+     }
+     ```
+
+  2. Overview fields populated from design phase context
+  3. Session initialised with current timestamp
+  4. Blockers array starts empty
+
+Input:
+  - Design phase context (value prop, stack, mode)
+  - Current timestamp
+
+Output:
+  - .greenlight/project-state.json created
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | ProjectStateExists | .greenlight/project-state.json already exists | Overwrite with fresh state. Warn user: "Overwriting existing project-state.json" |
+  | WriteFailure | Cannot write project-state.json | Report error. Abort. Suggest checking permissions |
+  | MissingDesignContext | Design phase did not provide value_prop or stack | Use placeholder values: value_prop "TBD", stack "TBD". Warn user |
+
+Invariants:
+  - project-state.json follows DESIGN.md 4.4 schema exactly
+  - JSON is valid and parseable
+  - overview.mode defaults to "yolo" if not specified
+  - session.last_session is always a valid ISO timestamp
+  - blockers is always an array (never null)
+  - File permissions are 0o644
+
+Security:
+  - No sensitive data in project-state.json
+  - No secrets, tokens, or PII
+
+Verification: auto
+Dependencies: None
+```
+
+### C-80: InitStateDetection
+
+```
+Contract: InitStateDetection
+Boundary: All commands -> State detection logic (format resolution)
+Slice: S-29 (Init Command and State Detection)
+Design refs: FR-5, FR-8, D-31, DESIGN.md 4.5
+
+STATE DETECTION: Logic documented in references/state-format.md,
+implemented by every command that reads state
+
+Every state-reading command must follow the detection flow before
+accessing state. This contract defines the detection behaviour that
+all commands implement consistently.
+
+Behaviour:
+
+  1. Check if .greenlight/slices/ directory exists:
+     - Yes -> file-per-slice format. Read individual slice files.
+     - No -> continue to step 2.
+
+  2. Check if .greenlight/STATE.md exists:
+     - Yes -> legacy format. Parse STATE.md as source of truth.
+     - No -> continue to step 3.
+
+  3. No state found:
+     - Return NoStateError
+     - Commands should display: "No project state found. Run /gl:init to get started."
+
+  Commands that implement this detection:
+  - /gl:slice (pre-flight, Step 4, Step 10)
+  - /gl:status (full read)
+  - /gl:pause (current slice lookup)
+  - /gl:resume (full state read)
+  - /gl:ship (pre-check)
+  - /gl:add-slice (slice list)
+  - /gl:quick (test summary)
+
+Input:
+  - Filesystem state (.greenlight/ directory contents)
+
+Output:
+  - format: "file-per-slice" | "legacy" | "none"
+  - state_data: parsed state (format-dependent)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoStateFound | Neither slices/ nor STATE.md exists | Display suggestion to run /gl:init. Do not crash |
+  | SlicesDirUnreadable | slices/ exists but cannot be read | Report permission error. Suggest checking directory permissions |
+  | LegacyStateMalformed | STATE.md exists but cannot be parsed | Report parse error. Suggest running /gl:migrate-state or re-running /gl:init |
+
+Invariants:
+  - Detection logic is identical across all commands (single source of truth in C-77)
+  - Directory existence check is the primary signal (D-31)
+  - Detection always succeeds or produces a clear error (no ambiguous states)
+  - Detection does not modify any files (read-only operation)
+  - Detection result determines which read/write paths the command follows
+  - Legacy format commands work exactly as before (no regression)
+  - File-per-slice commands read individual files instead of monolithic STATE.md
+
+Security:
+  - Detection is read-only. No files modified.
+  - Directory existence check does not follow symlinks (prevents symlink attacks)
+
+Verification: verify
+Acceptance Criteria:
+- Commands detect file-per-slice format when .greenlight/slices/ directory exists
+- Commands detect legacy format when only .greenlight/STATE.md exists
+- Commands display helpful message when no state exists
+- Existing commands work identically with legacy STATE.md format (no regression)
+
+Steps:
+- Create a project with file-per-slice format (/gl:init). Run /gl:status and verify it reads from slices/
+- Create a project with legacy STATE.md. Run /gl:status and verify it reads from STATE.md
+- Remove both slices/ and STATE.md. Run /gl:status and verify it suggests /gl:init
+
+Dependencies: C-77 (detection logic defined in state-format.md)
+```
+
+---
+
+## S-30: Slice Command State Write
+
+*User Actions:*
+- *1. Run multiple /gl:slice sessions in parallel without state corruption*
+
+### C-81: SliceCommandStateWrite
+
+```
+Contract: SliceCommandStateWrite
+Boundary: /gl:slice orchestrator -> Filesystem (own slice file + STATE.md regeneration)
+Slice: S-30 (Slice Command State Write)
+Design refs: FR-1, FR-2, FR-10, D-34, DESIGN.md 4.8, 5.2
+
+COMMAND UPDATE: src/commands/gl/slice.md — Read/write own slice file, regenerate STATE.md
+
+/gl:slice is the primary command affected by this change. It must:
+1. Detect state format (C-80)
+2. Read from its own slice file (not monolithic STATE.md)
+3. Write only to its own slice file (not shared STATE.md)
+4. Regenerate STATE.md as summary view after every write
+
+Changes to /gl:slice pipeline:
+
+  Pre-flight (before Step 1):
+    - Detect state format (C-80)
+    - If file-per-slice: read target slice file from .greenlight/slices/{id}.md
+    - If legacy: read STATE.md as before (no change)
+
+  Step 4 (claim slice / start implementation):
+    - If file-per-slice: write status + step + session to own slice file
+    - Set session field (C-82)
+    - Regenerate STATE.md (D-34)
+    - If legacy: write to STATE.md as before (no change)
+
+  Step 10 (completion / status update):
+    - If file-per-slice: write final status + test counts to own slice file
+    - Clear session field
+    - Regenerate STATE.md (D-34)
+    - If legacy: write to STATE.md as before (no change)
+
+  STATE.md regeneration:
+    - Read all slice files from .greenlight/slices/
+    - Read project-state.json for overview, session, blockers
+    - Write STATE.md in generated format (DESIGN.md 4.6)
+    - Header: <!-- GENERATED by greenlight -- source of truth is .greenlight/slices/*.md -->
+
+  Crash safety:
+    - Slice file writes use write-to-temp-then-rename (NFR-4)
+    - STATE.md regeneration uses write-to-temp-then-rename
+    - If regeneration fails, slice file is still correct (partial failure is safe)
+
+Input:
+  - Slice ID (from orchestrator context)
+  - State format (from detection)
+  - Slice state data (status, step, tests, session, etc.)
+
+Output:
+  - Updated .greenlight/slices/{id}.md
+  - Regenerated .greenlight/STATE.md
+  - Or: updated legacy .greenlight/STATE.md (if legacy format)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | SliceFileNotFound | Target slice file does not exist in slices/ | Create it (first write). Warn: "Creating new slice file for {id}" |
+  | SliceFileWriteFailure | Cannot write to slice file | Report error. Do not proceed to next step. Suggest checking permissions |
+  | RegenerationFailure | Cannot regenerate STATE.md | Warn but continue. Slice file is still correct. STATE.md will be regenerated on next write |
+  | ConcurrentSliceClaim | Target slice has active session field from another session | Warn: "Slice {id} appears to be in progress (session: {session}). Continue anyway? (y/n)" |
+
+Invariants:
+  - /gl:slice writes ONLY to its own slice file (never to another slice's file)
+  - STATE.md is regenerated after every state write (D-34)
+  - Legacy format behaviour is completely unchanged (D-37)
+  - Crash safety via write-to-temp-then-rename on all writes (NFR-4)
+  - Concurrent sessions writing to different slices never conflict (FR-2)
+  - Session field is advisory only -- warning, not blocking (D-33)
+  - Slice file is the source of truth, STATE.md is a convenience view
+  - Pipeline step ordering is unchanged (only read/write targets change)
+
+Security:
+  - Slice ID validated before file path construction (path traversal prevention)
+  - Advisory session warning prevents accidental duplicate work
+  - No sensitive data written to slice files
+
+Verification: verify
+Acceptance Criteria:
+- Running /gl:slice on a slice writes status updates to .greenlight/slices/{id}.md only
+- Running two /gl:slice sessions on different slices simultaneously does not corrupt either slice's state
+- STATE.md is regenerated after each write and reflects all slice states accurately
+- Running /gl:slice on a legacy-format project works exactly as before
+
+Steps:
+- Run /gl:slice on a file-per-slice project. After Step 4, verify .greenlight/slices/{id}.md has status implementing
+- Open STATE.md and verify it shows the slice as in-progress
+- In a second terminal, run /gl:slice on a different slice. Verify neither slice file is corrupted
+- Run /gl:slice on a legacy project and verify STATE.md is written directly (no slices/ involved)
+
+Dependencies: C-76 (slice file schema), C-77 (state format rules), C-80 (state detection)
+```
+
+### C-82: SliceSessionTracking
+
+```
+Contract: SliceSessionTracking
+Boundary: /gl:slice orchestrator -> Slice file frontmatter (advisory session field)
+Slice: S-30 (Slice Command State Write)
+Design refs: FR-9, D-33, DESIGN.md 4.3
+
+SESSION TRACKING: Advisory field in slice file frontmatter
+
+When a session starts working on a slice, it writes a session identifier
+to the slice file's frontmatter. This allows other sessions to detect
+active work and warn before claiming the same slice.
+
+Behaviour:
+
+  1. On slice claim (Step 4):
+     a. Generate session ID: {ISO timestamp}-{random 4-char hex suffix}
+        Example: 2026-02-22T14:00:00Z-a7f3
+     b. Write session field to slice file frontmatter
+     c. If slice already has a session field with a value:
+        - Warn: "Slice {id} appears to be in progress (session: {session}).
+          Another terminal may be working on this slice."
+        - Prompt: "Continue anyway? (y/n)"
+        - If yes: overwrite session field with new session ID
+        - If no: abort slice execution
+
+  2. On slice completion (Step 10):
+     a. Clear session field (set to empty string)
+     b. Write updated frontmatter to slice file
+
+  3. On slice pause:
+     a. Session field is preserved (slice is still claimed)
+     b. /gl:pause writes resume context to project-state.json
+
+  4. On unexpected exit (crash/ctrl-c):
+     a. Session field remains in frontmatter (stale session)
+     b. Next session to claim this slice will see the stale session
+        and receive a warning (advisory only, not blocking)
+
+Input:
+  - Current ISO timestamp
+  - Random hex suffix (4 characters)
+  - Existing session field value (if any)
+
+Output:
+  - session field written to slice file frontmatter
+  - Warning displayed to user (if existing session detected)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | StaleSession | Session field has value but no active process | Warning only. User can override. No automatic cleanup |
+  | SessionGenerationFailure | Cannot generate random suffix | Use timestamp-only as session ID. Warn: "Session ID generated without random suffix" |
+
+Invariants:
+  - Session tracking is advisory only (D-33) -- never blocking
+  - Session ID format is exactly: ISO-timestamp-{4-char-hex}
+  - Session field is set BEFORE any agent work begins (earliest possible signal)
+  - Session field is cleared ONLY on successful completion
+  - Stale sessions are warned about but never automatically cleaned up
+  - Session tracking only applies to file-per-slice format (not legacy)
+  - Other sessions can read session fields from any slice file in .greenlight/slices/
+  - Warning prompt is skipped in yolo mode (auto-continue with warning log)
+
+Security:
+  - Session ID contains no sensitive information (timestamp + random hex)
+  - Session tracking does not provide access control (advisory only)
+  - No PID, username, or machine identifier in session ID
+
+Verification: auto
+Dependencies: C-76 (session field defined in slice state schema), C-81 (slice writes include session updates)
+```
+
+---
+
+## S-31: Supporting Command Updates
+
+*User Actions:*
+- *2. See accurate slice status across all concurrent sessions*
+
+### C-83: StatusSliceAggregation
+
+```
+Contract: StatusSliceAggregation
+Boundary: /gl:status command -> Filesystem (read all slice files, compute summary)
+Slice: S-31 (Supporting Command Updates)
+Design refs: FR-3, FR-10, D-34, DESIGN.md 4.6, 4.8
+
+COMMAND UPDATE: src/commands/gl/status.md — Read from slices/ directory, compute summary
+
+/gl:status reads all slice files from .greenlight/slices/ and computes
+a summary view. In file-per-slice mode, it reads individual files
+instead of parsing the monolithic STATE.md.
+
+Behaviour:
+
+  1. Detect state format (C-80)
+
+  2. If file-per-slice:
+     a. Read all .md files from .greenlight/slices/
+     b. Parse frontmatter from each file (flat key-value)
+     c. Compute summary:
+        - Slice table: ID, Name, Status, Tests, Security, Deps
+        - Progress: done/total slices (complete count / total count)
+        - Current: slices where status is not pending and not complete
+        - Test Summary: sum of tests and security_tests from all files
+     d. Read project-state.json for overview, session, blockers
+     e. Display computed summary to user
+     f. Regenerate STATE.md (D-34)
+
+  3. If legacy:
+     a. Read and display STATE.md as before (no change)
+
+Input:
+  - .greenlight/slices/*.md (all slice files)
+  - .greenlight/project-state.json (overview, session, blockers)
+
+Output:
+  - Summary display to user
+  - Regenerated .greenlight/STATE.md (in file-per-slice mode)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoSliceFiles | slices/ exists but has no .md files | Display empty summary: "No slices found. Run /gl:init or /gl:add-slice" |
+  | CorruptSliceFile | A slice file has invalid frontmatter | Skip that file. Warn: "Skipping corrupt file: {filename}". Include remaining files in summary |
+  | ProjectStateReadFailure | Cannot read project-state.json | Display slice summary without overview/session/blockers. Warn user |
+
+Invariants:
+  - Status display is computed from individual slice files (never cached)
+  - All slice files are read on every /gl:status invocation (fresh data)
+  - Performance: reading 50+ files completes in under 1 second (NFR-2)
+  - Corrupt files are skipped, not blocking (graceful degradation)
+  - Legacy format display is completely unchanged
+  - STATE.md regeneration happens after display (even if display fails)
+  - Slice table is sorted by slice ID (ascending)
+
+Security:
+  - Read-only operation. No files modified except STATE.md regeneration.
+  - No sensitive data displayed.
+
+Verification: verify
+Acceptance Criteria:
+- /gl:status displays a summary table computed from all files in .greenlight/slices/
+- Status reflects real-time slice state (each file read fresh on invocation)
+- /gl:status on a legacy project displays STATE.md as before (no regression)
+- Corrupt slice files are skipped with a warning, not blocking
+
+Steps:
+- Run /gl:status on a file-per-slice project with multiple slices in various states
+- Verify the summary table matches the frontmatter in individual slice files
+- Manually corrupt one slice file's frontmatter. Run /gl:status. Verify warning appears and other slices display correctly
+
+Dependencies: C-77 (state format rules), C-80 (state detection)
+```
+
+### C-84: SupportingCommandStateAdaptation
+
+```
+Contract: SupportingCommandStateAdaptation
+Boundary: Supporting commands -> State detection + slice file reads/writes
+Slice: S-31 (Supporting Command Updates)
+Design refs: FR-8, D-34, DESIGN.md 4.8, 5.2
+
+COMMAND UPDATES: 5 supporting commands adapted for file-per-slice format
+
+Each supporting command gains state detection (C-80) and format-aware
+read/write behaviour. All changes follow the same pattern: detect
+format, use appropriate read/write paths, regenerate STATE.md after writes.
+
+Commands updated:
+
+  1. /gl:pause (src/commands/gl/pause.md)
+     - Detect format. If file-per-slice:
+       - Write pause state to own slice file (status unchanged, session preserved)
+       - Write resume context to project-state.json (session.resume_file)
+       - Regenerate STATE.md
+     - If legacy: write to STATE.md as before
+
+  2. /gl:resume (src/commands/gl/resume.md)
+     - Detect format. If file-per-slice:
+       - Read all slice files to determine resumable state
+       - Read project-state.json for resume context
+       - Resume from slice file + project-state.json
+     - If legacy: read STATE.md as before
+
+  3. /gl:ship (src/commands/gl/ship.md)
+     - Detect format. If file-per-slice:
+       - Read all slice files. Pre-check: all must have status complete
+       - If any non-complete slice found: report which slices are incomplete
+     - If legacy: read STATE.md as before
+
+  4. /gl:add-slice (src/commands/gl/add-slice.md)
+     - Detect format. If file-per-slice:
+       - Create new slice file in .greenlight/slices/{id}.md
+       - Regenerate STATE.md
+     - If legacy: update STATE.md as before
+
+  5. /gl:quick (src/commands/gl/quick.md)
+     - Detect format. If file-per-slice:
+       - Update test counts in relevant slice file
+       - Regenerate STATE.md
+     - If legacy: update STATE.md as before
+
+Input (per command):
+  - State format (from detection)
+  - Command-specific data (slice ID, test counts, etc.)
+
+Output (per command):
+  - Updated slice file(s) and/or project-state.json
+  - Regenerated STATE.md (for write operations)
+  - Or: updated legacy STATE.md (if legacy format)
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | FormatDetectionFailure | Cannot determine state format | Report error. Suggest running /gl:init |
+  | SliceFileNotFound | Referenced slice file does not exist | Create it if write operation, report missing if read operation |
+  | ProjectStateNotFound | project-state.json missing in file-per-slice mode | Create default project-state.json. Warn user |
+  | RegenerationFailure | STATE.md regeneration fails | Warn but continue. Slice files are still correct |
+
+Invariants:
+  - Every command follows the same detection flow (C-80)
+  - Write commands regenerate STATE.md after writes (D-34)
+  - Legacy format behaviour is completely unchanged for all 5 commands
+  - Each command writes only to its own concern (no cross-slice writes)
+  - /gl:add-slice validates new slice ID before creating file (C-76 rules)
+  - /gl:ship reads ALL slice files (pre-check is comprehensive)
+  - /gl:quick updates only the relevant slice file (not all files)
+  - All write operations use write-to-temp-then-rename (NFR-4)
+  - Command behaviour is identical regardless of format (same user experience)
+
+Security:
+  - Slice ID validation on /gl:add-slice prevents path traversal
+  - No sensitive data in any state files
+  - All commands are non-destructive (no data loss on format switch)
+
+Verification: verify
+Acceptance Criteria:
+- /gl:pause on a file-per-slice project writes pause context to project-state.json, not STATE.md
+- /gl:resume on a file-per-slice project reads from slice files and project-state.json
+- /gl:ship on a file-per-slice project checks all individual slice files for completeness
+- /gl:add-slice creates a new file in .greenlight/slices/ and regenerates STATE.md
+- /gl:quick updates test counts in the relevant slice file and regenerates STATE.md
+- All 5 commands work exactly as before on legacy-format projects
+
+Steps:
+- Run /gl:add-slice on a file-per-slice project. Verify new file created in slices/ and STATE.md updated
+- Run /gl:ship on a file-per-slice project with one incomplete slice. Verify it reports the incomplete slice
+
+Dependencies: C-77 (state format rules), C-78 (slices/ directory exists), C-80 (state detection)
+```
+
+---
+
+## S-32: Migration Command
+
+*User Actions:*
+- *3. Migrate existing projects to the new state format*
+
+### C-85: MigrateStateCommand
+
+```
+Contract: MigrateStateCommand
+Boundary: User -> /gl:migrate-state command (legacy STATE.md to file-per-slice conversion)
+Slice: S-32 (Migration Command)
+Design refs: FR-6, D-32, D-38, DESIGN.md 4.7, 5.1
+
+COMMAND SPECIFICATION: src/commands/gl/migrate-state.md (~80 lines)
+
+/gl:migrate-state converts an existing STATE.md-based project to the
+file-per-slice format. Migration is explicit (D-32), one-way, and
+all-or-nothing. No dual-write period (D-38).
+
+Behaviour (migration flow per DESIGN.md 4.7):
+
+  1. Verify .greenlight/STATE.md exists
+     - If not: error "No STATE.md found. Nothing to migrate."
+
+  2. Verify .greenlight/slices/ does NOT exist
+     - If exists: error "Already using file-per-slice format. Nothing to migrate."
+
+  3. Parse STATE.md:
+     a. Extract slice table rows (ID, Name, Status, Tests, Security, Deps)
+     b. Extract Current section (active slice, step)
+     c. Extract Decisions section
+     d. Extract Blockers section
+     e. Extract Session section
+     f. Extract Overview section (value prop, stack, mode)
+
+  4. Create .greenlight/slices/ directory (0o755)
+
+  5. For each slice row:
+     a. Validate slice ID format (S-{digits})
+     b. Create .greenlight/slices/{id}.md with:
+        - Frontmatter from table data (id, status, tests, security_tests, deps)
+        - step: from Current section if this is the active slice, else "none"
+        - milestone: from project context or "unknown"
+        - started: inferred from status (non-pending -> current date)
+        - updated: current ISO timestamp
+        - session: empty (no active session after migration)
+     c. Body: heading with slice name, minimal body sections
+     d. Use write-to-temp-then-rename (NFR-4)
+
+  6. Create .greenlight/project-state.json from non-slice sections:
+     - overview from Overview section
+     - session from Session section
+     - blockers from Blockers section
+
+  7. Rename .greenlight/STATE.md to .greenlight/STATE.md.backup
+
+  8. Generate new .greenlight/STATE.md (generated format with header comment)
+
+  9. Report: "Migrated {N} slices to file-per-slice format. Backup: STATE.md.backup"
+
+Input:
+  - .greenlight/STATE.md (legacy format, source of truth)
+
+Output:
+  - .greenlight/slices/ directory with individual slice files
+  - .greenlight/project-state.json
+  - .greenlight/STATE.md.backup (original STATE.md)
+  - .greenlight/STATE.md (regenerated, generated format)
+  - Summary report to user
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | NoStateMd | .greenlight/STATE.md does not exist | Error: "No STATE.md found. Nothing to migrate." Stop |
+  | AlreadyMigrated | .greenlight/slices/ directory already exists | Error: "Already using file-per-slice format. Nothing to migrate." Stop |
+  | ParseFailure | Cannot parse STATE.md table or sections | Error: "Failed to parse STATE.md: {detail}. Manual migration may be needed." Stop |
+  | InvalidSliceId | Parsed slice ID does not match expected pattern | Skip that slice. Warn: "Skipping invalid slice ID: {id}" |
+  | PartialWriteFailure | Some slice files fail to write | Abort migration. Remove partially created slices/ directory. Restore STATE.md from backup. Error: "Migration failed. Original STATE.md preserved." |
+  | BackupRenameFailure | Cannot rename STATE.md to backup | Abort migration. Remove slices/ directory. Error: "Cannot create backup. Migration aborted." |
+
+Invariants:
+  - Migration is one-way (file-per-slice to legacy is not supported)
+  - Migration is all-or-nothing (partial migration is rolled back)
+  - Original STATE.md is ALWAYS preserved as STATE.md.backup
+  - Migration is explicit only (D-32: no auto-migration on access)
+  - No dual-write period (D-38)
+  - Slice IDs are validated before file creation (path traversal prevention)
+  - Migration creates the same state as /gl:init would for the same slices
+  - After migration, all commands use file-per-slice format automatically (D-31 detection)
+  - Migration can be run at any time (not tied to a specific command or phase)
+
+Security:
+  - Slice ID validation prevents path traversal during file creation
+  - Backup preserves the original STATE.md (no data loss)
+  - Migration does not modify any source code, test files, or config files
+  - File permissions follow conventions: directories 0o755, files 0o644
+
+Verification: verify
+Acceptance Criteria:
+- Running /gl:migrate-state on a legacy project creates .greenlight/slices/ with one file per slice
+- STATE.md.backup contains the original STATE.md content exactly
+- New STATE.md has the GENERATED header comment
+- project-state.json contains overview, session, and blockers from original STATE.md
+- After migration, /gl:status reads from slices/ (not the old STATE.md)
+
+Steps:
+- Create a project with legacy STATE.md (or use an existing one)
+- Run /gl:migrate-state
+- Verify .greenlight/slices/ contains files matching the slice table from original STATE.md
+- Verify STATE.md.backup exists and matches the original
+- Run /gl:status and verify it displays data from the new format
+- Verify /gl:migrate-state on an already-migrated project reports "Already using file-per-slice format"
+
+Dependencies: C-76 (slice file schema), C-77 (state format rules), C-79 (project-state.json schema)
+```
+
+### C-86: MigrateStateBackup
+
+```
+Contract: MigrateStateBackup
+Boundary: /gl:migrate-state -> Filesystem (backup creation + atomic directory creation)
+Slice: S-32 (Migration Command)
+Design refs: FR-6, NFR-4, DESIGN.md 4.7 steps 7-8
+
+BACKUP AND ATOMICITY: Migration safety guarantees
+
+The migration creates a backup before any destructive operation and
+ensures the slices/ directory is created atomically.
+
+Behaviour:
+
+  1. All slice files are written to .greenlight/slices/ first
+  2. project-state.json is written
+  3. Only AFTER all files are successfully written:
+     a. Rename STATE.md to STATE.md.backup (os.Rename, atomic on POSIX)
+     b. Generate new STATE.md in generated format
+  4. If any step in 1-2 fails:
+     a. Remove the partially created slices/ directory and all contents
+     b. STATE.md is untouched (no rename occurred yet)
+     c. Report failure to user
+
+  Cleanup on failure:
+  - os.RemoveAll(".greenlight/slices/") removes partial directory
+  - STATE.md was not renamed yet, so original is preserved
+  - project-state.json removal (if partially written)
+
+Input:
+  - Parsed STATE.md data (from C-85)
+  - Filesystem operations (directory create, file write, rename)
+
+Output:
+  - Atomic migration: either fully complete or fully rolled back
+  - STATE.md.backup preserved
+
+Errors:
+  | Error State | When | Behaviour |
+  |-------------|------|-----------|
+  | CleanupFailure | Cannot remove partially created slices/ directory | Report error. Manual cleanup instructions: "Remove .greenlight/slices/ manually. Your STATE.md is preserved." |
+  | BackupExists | STATE.md.backup already exists | Rename to STATE.md.backup.{timestamp}. Warn user |
+
+Invariants:
+  - Backup is created AFTER slice files are written (ensures backup is only needed if migration succeeded)
+  - STATE.md rename (to backup) happens LAST (ordering guarantees rollback safety)
+  - If migration fails at any point before rename, STATE.md is untouched
+  - Multiple backups are preserved (timestamped suffixes) -- no data loss
+  - write-to-temp-then-rename for individual slice files (NFR-4)
+  - Entire migration is designed for crash safety: the worst case is a stale slices/ directory alongside an intact STATE.md
+
+Security:
+  - Backup file contains no sensitive data (same content as STATE.md)
+  - No permission escalation during migration
+  - Cleanup removes only files in .greenlight/ (no traversal)
+
+Verification: auto
+Dependencies: C-85 (migration command defines the flow that this contract ensures is safe)
+```
+
+---
+
+## S-33: Documentation Updates
+
+*User Actions:*
+- *1. Run multiple /gl:slice sessions in parallel without state corruption (documentation confirms)*
+- *2. See accurate slice status across all concurrent sessions (documentation confirms)*
+
+### C-87: CLAUDEmdStateFormatRule
+
+```
+Contract: CLAUDEmdStateFormatRule
+Boundary: CLAUDE.md -> All agents (state format awareness hard rule in standards)
+Slice: S-33 (Documentation Updates)
+Design refs: DESIGN.md 5.2 (src/CLAUDE.md change)
+
+FILE UPDATE: src/CLAUDE.md
+
+Location: Add state format awareness. Insert within an appropriate
+section (after existing rules, before "What NOT To Do").
+
+Content (approximately 5 lines, hard rule):
+  ### State Format
+  - Check `.greenlight/slices/` before reading STATE.md directly
+  - If `slices/` exists, individual slice files are the source of truth
+  - STATE.md is generated output in file-per-slice mode -- do not write to it directly
+  - Full protocol: `references/state-format.md`
+
+Errors: None (static content update)
+
+Invariants:
+  - Rule is concise (header + 4 bullet points)
+  - Rule references the full protocol in references/state-format.md
+  - Existing CLAUDE.md sections unchanged
+  - This is a hard rule: agents MUST check slices/ before reading STATE.md
+  - Rule applies to all agents, not just specific ones
+
+Security:
+  - No security impact. Static content update.
+
+Verification: auto
+Dependencies: C-77 (references/state-format.md must be defined)
+```
+
+### C-88: StateTemplateDocUpdate
+
+```
+Contract: StateTemplateDocUpdate
+Boundary: templates/state.md -> Both formats documented
+Slice: S-33 (Documentation Updates)
+Design refs: DESIGN.md 5.2 (src/templates/state.md change)
+
+FILE UPDATE: src/templates/state.md — Document both state formats
+
+The existing templates/state.md documents the STATE.md format. This
+update adds documentation for:
+1. The file-per-slice format as the recommended format for new projects
+2. The generated nature of STATE.md in file-per-slice mode
+3. Migration instructions for existing projects
+4. Cross-reference to references/state-format.md and templates/slice-state.md
+
+Content additions (~30 lines):
+
+  Section: State Format Detection
+    - Explain the two formats (file-per-slice and legacy)
+    - Explain how commands detect which format is active
+
+  Section: Generated STATE.md
+    - Explain that STATE.md is generated output in file-per-slice mode
+    - Show the generated header comment
+    - Explain that changes to STATE.md will be overwritten
+
+  Section: Migration
+    - Reference /gl:migrate-state command
+    - Note: migration is explicit, one-way, with backup
+
+Errors: None (static content update)
+
+Invariants:
+  - Existing STATE.md template content is preserved (additive update)
+  - Both formats are documented side by side
+  - Migration instructions reference /gl:migrate-state (not manual steps)
+  - Cross-references to state-format.md and slice-state.md are included
+  - New projects are directed to file-per-slice format
+
+Security:
+  - No security impact. Documentation update.
+
+Verification: auto
+Dependencies: C-76 (slice state template must be defined), C-77 (state format reference must be defined)
+```
+
+### C-89: CheckpointProtocolStateUpdate
+
+```
+Contract: CheckpointProtocolStateUpdate
+Boundary: checkpoint-protocol.md -> Slice file references for state context
+Slice: S-33 (Documentation Updates)
+Design refs: DESIGN.md 5.2 (src/references/checkpoint-protocol.md change)
+
+FILE UPDATE: src/references/checkpoint-protocol.md — Reference slice files for state context
+
+The checkpoint protocol references STATE.md for state context during
+checkpoint save/restore. This update adds awareness that state context
+may come from individual slice files instead.
+
+Content changes (~10 lines):
+
+  Update state context references:
+    - Where checkpoint save reads "current slice" from STATE.md,
+      add: "In file-per-slice mode, read from .greenlight/slices/{id}.md"
+    - Where checkpoint restore writes state context,
+      add: "In file-per-slice mode, write to individual slice file"
+    - Add note: "State format detection (references/state-format.md)
+      determines which path to use"
+
+Errors: None (static content update)
+
+Invariants:
+  - Existing checkpoint protocol logic is unchanged
+  - Additions are conditional on state format (additive, not replacing)
+  - Cross-reference to state-format.md for detection logic
+  - Checkpoint save/restore works with both formats
+
+Security:
+  - No security impact. Documentation update.
+
+Verification: auto
+Dependencies: C-77 (state format reference must be defined)
+```
+
+---
+
+## S-34: Manifest and Integration
+
+*User Actions:*
+- *1. Run multiple /gl:slice sessions in parallel without state corruption (files installed)*
+- *2. See accurate slice status across all concurrent sessions (files installed)*
+- *3. Migrate existing projects to the new state format (command installed)*
+
+### C-90: ManifestParallelStateUpdate
+
+```go
+// Contract: ManifestParallelStateUpdate
+// Boundary: Go CLI -> Manifest (3 new file paths for parallel state)
+// Slice: S-34 (Manifest and Integration)
+//
+// FILE: internal/installer/installer.go
+//
+// Change: Add 3 new entries to Manifest slice
+//
+// New entries (inserted in alphabetical order within their sections):
+//   "commands/gl/migrate-state.md"    // NEW -- migration command
+//   "references/state-format.md"      // NEW -- state format protocol
+//   "templates/slice-state.md"        // NEW -- slice state template
+//
+// Updated Manifest (38 entries, up from 35):
+//   "agents/gl-architect.md"
+//   "agents/gl-assessor.md"
+//   "agents/gl-codebase-mapper.md"
+//   "agents/gl-debugger.md"
+//   "agents/gl-designer.md"
+//   "agents/gl-implementer.md"
+//   "agents/gl-security.md"
+//   "agents/gl-test-writer.md"
+//   "agents/gl-verifier.md"
+//   "agents/gl-wrapper.md"
+//   "commands/gl/add-slice.md"
+//   "commands/gl/assess.md"
+//   "commands/gl/changelog.md"
+//   "commands/gl/debug.md"
+//   "commands/gl/design.md"
+//   "commands/gl/help.md"
+//   "commands/gl/init.md"
+//   "commands/gl/map.md"
+//   "commands/gl/migrate-state.md"    <-- NEW
+//   "commands/gl/pause.md"
+//   "commands/gl/quick.md"
+//   "commands/gl/resume.md"
+//   "commands/gl/roadmap.md"
+//   "commands/gl/settings.md"
+//   "commands/gl/ship.md"
+//   "commands/gl/slice.md"
+//   "commands/gl/status.md"
+//   "commands/gl/wrap.md"
+//   "references/checkpoint-protocol.md"
+//   "references/circuit-breaker.md"
+//   "references/deviation-rules.md"
+//   "references/state-format.md"      <-- NEW
+//   "references/verification-patterns.md"
+//   "references/verification-tiers.md"
+//   "templates/config.md"
+//   "templates/slice-state.md"        <-- NEW
+//   "templates/state.md"
+//   "CLAUDE.md"
+//
+// Errors: none (compile-time constant)
+//
+// Invariants:
+// - CLAUDE.md remains the LAST entry
+// - Entries within each section (agents/, commands/gl/, references/, templates/)
+//   are alphabetically ordered
+// - go:embed directive in main.go already uses wildcards
+//   (src/templates/*.md, src/references/*.md, src/commands/gl/*.md)
+//   so new .md files are automatically embedded -- no main.go change needed
+// - Manifest count increases from 35 to 38
+// - All existing tests that validate manifest count must be updated to expect 38
+// - This change is additive to C-74 (previous manifest update)
+//
+// Verification: auto
+// Dependencies: C-74 (previous manifest update must be applied first or simultaneously)
+```
+
+---
+
+## Updated User Action Mapping (Parallel State)
+
+| User Action | Slice(s) | Contracts | Enabled By |
+|-------------|----------|-----------|------------|
+| 1. Run multiple /gl:slice sessions in parallel without state corruption | S-28, S-29, S-30, S-31, S-33, S-34 | C-76, C-77, C-78, C-79, C-80, C-81, C-82, C-84, C-87, C-90 | Foundation docs + init + slice writes + supporting commands + CLAUDE.md rule + manifest |
+| 2. See accurate slice status across all concurrent sessions | S-28, S-29, S-31, S-33, S-34 | C-76, C-77, C-80, C-83, C-84, C-87, C-90 | Foundation docs + detection + status aggregation + supporting commands + CLAUDE.md rule + manifest |
+| 3. Migrate existing projects to the new state format | S-28, S-32, S-34 | C-76, C-77, C-85, C-86, C-90 | Foundation docs + migration command + backup safety + manifest |

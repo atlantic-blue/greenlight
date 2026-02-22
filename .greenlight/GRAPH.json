@@ -1,7 +1,7 @@
 {
   "project": "greenlight",
-  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, documentation system, circuit breaker module, and verification tiers. Defines build order by slice with explicit dependencies and parallelism.",
-  "date": "2026-02-19",
+  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, documentation system, circuit breaker module, verification tiers, and parallel state. Defines build order by slice with explicit dependencies and parallelism.",
+  "date": "2026-02-22",
 
   "slices": {
     "S-01": {
@@ -375,6 +375,113 @@
       "boundaries": [
         "gl-architect.md -> Tier selection guidance and acceptance criteria generation"
       ]
+    },
+
+    "S-28": {
+      "name": "Slice State Foundation Documents",
+      "description": "Create templates/slice-state.md (schema, lifecycle, session tracking, body sections, naming, examples) and references/state-format.md (detection logic, concurrent access patterns, STATE.md regeneration, crash safety, backward compatibility). These are the foundation documents that all other parallel-state changes reference.",
+      "deliverables": ["src/templates/slice-state.md", "src/references/state-format.md"],
+      "contracts": ["C-76", "C-77"],
+      "depends_on": [],
+      "user_action": "1. Run multiple /gl:slice sessions in parallel without state corruption (foundation)",
+      "milestone": "parallel-state",
+      "wave": 18,
+      "estimated_tests": 6,
+      "boundaries": [
+        "Template file -> Agents (slice state schema and lifecycle)",
+        "Reference doc -> All commands (state detection, concurrency, backward compat)"
+      ]
+    },
+    "S-29": {
+      "name": "Init Command and State Detection",
+      "description": "Update /gl:init to create .greenlight/slices/ directory with individual slice files and .greenlight/project-state.json instead of monolithic STATE.md. Implement state format detection logic (directory existence check) that all commands follow. New projects use file-per-slice from day one.",
+      "deliverables": ["src/commands/gl/init.md (update)"],
+      "contracts": ["C-78", "C-79", "C-80"],
+      "depends_on": ["S-28"],
+      "user_action": "1. Run multiple /gl:slice sessions in parallel without state corruption (new projects)",
+      "milestone": "parallel-state",
+      "wave": 19,
+      "estimated_tests": 10,
+      "boundaries": [
+        "/gl:init orchestrator -> Filesystem (slices/ directory + slice files)",
+        "/gl:init orchestrator -> Filesystem (project-state.json)",
+        "All commands -> State detection logic (format resolution)"
+      ]
+    },
+    "S-30": {
+      "name": "Slice Command State Write",
+      "description": "Update /gl:slice to read from and write to individual slice files in file-per-slice mode. Add advisory session tracking (ISO timestamp + random suffix) on slice claim. Regenerate STATE.md after every write. Preserve legacy STATE.md behaviour for non-migrated projects.",
+      "deliverables": ["src/commands/gl/slice.md (update)"],
+      "contracts": ["C-81", "C-82"],
+      "depends_on": ["S-28", "S-29"],
+      "user_action": "1. Run multiple /gl:slice sessions in parallel without state corruption",
+      "milestone": "parallel-state",
+      "wave": 20,
+      "estimated_tests": 10,
+      "boundaries": [
+        "/gl:slice orchestrator -> Filesystem (own slice file + STATE.md regeneration)",
+        "/gl:slice orchestrator -> Slice file frontmatter (advisory session field)"
+      ]
+    },
+    "S-31": {
+      "name": "Supporting Command Updates",
+      "description": "Update /gl:status (read all slice files, compute summary), /gl:pause (write to slice file + project-state.json), /gl:resume (read from slice files + project-state.json), /gl:ship (read all slice files for completeness check), /gl:add-slice (create new slice file), /gl:quick (update test counts in slice file). All commands gain state detection and regenerate STATE.md after writes.",
+      "deliverables": ["src/commands/gl/status.md (update)", "src/commands/gl/pause.md (update)", "src/commands/gl/resume.md (update)", "src/commands/gl/ship.md (update)", "src/commands/gl/add-slice.md (update)", "src/commands/gl/quick.md (update)"],
+      "contracts": ["C-83", "C-84"],
+      "depends_on": ["S-28", "S-29"],
+      "user_action": "2. See accurate slice status across all concurrent sessions",
+      "milestone": "parallel-state",
+      "wave": 20,
+      "estimated_tests": 12,
+      "boundaries": [
+        "/gl:status command -> Filesystem (read all slice files, compute summary)",
+        "Supporting commands -> State detection + slice file reads/writes"
+      ]
+    },
+    "S-32": {
+      "name": "Migration Command",
+      "description": "Create /gl:migrate-state command that converts existing STATE.md projects to file-per-slice format. Parses legacy STATE.md, creates .greenlight/slices/ directory with individual slice files, creates project-state.json, backs up STATE.md, generates new STATE.md in generated format. Migration is explicit (D-32), one-way, and all-or-nothing with rollback on failure.",
+      "deliverables": ["src/commands/gl/migrate-state.md"],
+      "contracts": ["C-85", "C-86"],
+      "depends_on": ["S-28"],
+      "user_action": "3. Migrate existing projects to the new state format",
+      "milestone": "parallel-state",
+      "wave": 20,
+      "estimated_tests": 10,
+      "boundaries": [
+        "User -> /gl:migrate-state command (legacy STATE.md to file-per-slice)",
+        "/gl:migrate-state -> Filesystem (backup + atomic creation)"
+      ]
+    },
+    "S-33": {
+      "name": "Documentation Updates",
+      "description": "Update src/CLAUDE.md with state format awareness rule (check slices/ before STATE.md). Update src/templates/state.md to document both formats, generated nature of STATE.md, and migration instructions. Update src/references/checkpoint-protocol.md to reference slice files for state context.",
+      "deliverables": ["src/CLAUDE.md (update)", "src/templates/state.md (update)", "src/references/checkpoint-protocol.md (update)"],
+      "contracts": ["C-87", "C-88", "C-89"],
+      "depends_on": ["S-28"],
+      "user_action": "Supports all user actions (documentation enabling layer)",
+      "milestone": "parallel-state",
+      "wave": 21,
+      "estimated_tests": 6,
+      "boundaries": [
+        "CLAUDE.md -> All agents (state format awareness hard rule)",
+        "templates/state.md -> Both formats documented",
+        "checkpoint-protocol.md -> Slice file references for state context"
+      ]
+    },
+    "S-34": {
+      "name": "Manifest and Integration",
+      "description": "Add 3 new entries to Go CLI Manifest in installer.go: commands/gl/migrate-state.md, references/state-format.md, templates/slice-state.md. Manifest grows from 35 to 38 entries. Update manifest count in tests. End-to-end verification that all embedded content is installed correctly.",
+      "deliverables": ["internal/installer/installer.go (manifest update +3)", "internal/installer/manifest_docs_test.go (count update)"],
+      "contracts": ["C-90"],
+      "depends_on": ["S-28", "S-32", "S-33"],
+      "user_action": "Supports all user actions (manifest enabling layer)",
+      "milestone": "parallel-state",
+      "wave": 22,
+      "estimated_tests": 6,
+      "boundaries": [
+        "Go CLI -> Manifest (3 new file paths)"
+      ]
     }
   },
 
@@ -480,6 +587,36 @@
       "slices": ["S-26", "S-27"],
       "parallel": true,
       "scope": "verification-tiers"
+    },
+    "18": {
+      "description": "Parallel state foundation: slice state template (schema, lifecycle, examples) and state format reference (detection logic, concurrent access, backward compatibility). No dependencies on other milestones. Standalone foundation for all parallel state features.",
+      "slices": ["S-28"],
+      "parallel": false,
+      "scope": "parallel-state"
+    },
+    "19": {
+      "description": "Init command and state detection: update /gl:init to create slices/ directory, individual slice files, and project-state.json. Implement state format detection. Depends on S-28 (foundation documents must define schema and detection rules).",
+      "slices": ["S-29"],
+      "parallel": false,
+      "scope": "parallel-state"
+    },
+    "20": {
+      "description": "Core command updates and migration: /gl:slice reads/writes own slice file with session tracking, supporting commands adapted for both formats, and /gl:migrate-state converts legacy projects. S-30, S-31, and S-32 all depend on S-28+S-29 and can be built in parallel.",
+      "slices": ["S-30", "S-31", "S-32"],
+      "parallel": true,
+      "scope": "parallel-state"
+    },
+    "21": {
+      "description": "Parallel state documentation: CLAUDE.md state format rule, templates/state.md update for both formats, checkpoint-protocol.md slice file references. Depends on S-28 (foundation documents must be defined).",
+      "slices": ["S-33"],
+      "parallel": false,
+      "scope": "parallel-state"
+    },
+    "22": {
+      "description": "Parallel state manifest and integration: add 3 new file paths to Go CLI manifest, update manifest count in tests, end-to-end verification. Depends on S-28 (template and reference files must exist), S-32 (migrate-state command must exist), and S-33 (documentation updates must be applied).",
+      "slices": ["S-34"],
+      "parallel": false,
+      "scope": "parallel-state"
     }
   },
 
@@ -514,7 +651,17 @@
     { "from": "S-24", "to": "S-23", "reason": "Rejection flow handles non-approved responses from the verification gate; gate must exist (C-65) to trigger rejections" },
     { "from": "S-25", "to": "S-23", "reason": "Rejection counter tracks rejections from the verification gate; gate must exist (C-65) to produce rejections to count" },
     { "from": "S-26", "to": "S-23", "reason": "Documentation references verification-tiers.md (C-64) which must exist; checkpoint protocol update references Step 6b (C-65); manifest entry requires references/verification-tiers.md file" },
-    { "from": "S-27", "to": "S-22", "reason": "Architect tier guidance references the verification fields (C-62) that must be defined in the contract format first" }
+    { "from": "S-27", "to": "S-22", "reason": "Architect tier guidance references the verification fields (C-62) that must be defined in the contract format first" },
+    { "from": "S-29", "to": "S-28", "reason": "Init command references slice state schema (C-76) and state format detection rules (C-77) which must be defined in foundation documents" },
+    { "from": "S-30", "to": "S-28", "reason": "Slice command references slice file schema (C-76) and state format rules (C-77) for reading/writing slice files" },
+    { "from": "S-30", "to": "S-29", "reason": "Slice command uses state detection (C-80) which must be implemented in /gl:init update; needs slices/ directory to exist" },
+    { "from": "S-31", "to": "S-28", "reason": "Supporting commands reference state format rules (C-77) for detection and slice file schema (C-76) for parsing" },
+    { "from": "S-31", "to": "S-29", "reason": "Supporting commands use state detection (C-80) and require slices/ directory and project-state.json to exist (C-78, C-79)" },
+    { "from": "S-32", "to": "S-28", "reason": "Migration command creates slice files following schema (C-76) and follows state format rules (C-77) for the target format" },
+    { "from": "S-33", "to": "S-28", "reason": "Documentation references state-format.md (C-77) and slice-state.md (C-76) which must exist before cross-references can be added" },
+    { "from": "S-34", "to": "S-28", "reason": "Manifest entries for templates/slice-state.md and references/state-format.md require the files to exist" },
+    { "from": "S-34", "to": "S-32", "reason": "Manifest entry for commands/gl/migrate-state.md requires the command file to exist" },
+    { "from": "S-34", "to": "S-33", "reason": "Manifest installation must include all documentation updates (CLAUDE.md, state.md, checkpoint-protocol.md) to ensure consistency" }
   ],
 
   "import_graph": {
@@ -620,6 +767,21 @@
       "action": "Slice with auto tier behaves exactly as today -- no regression",
       "slices": ["S-23", "S-26"],
       "primary_slice": "S-23"
+    },
+    "20_parallel_slices": {
+      "action": "Run multiple /gl:slice sessions in parallel without state corruption",
+      "slices": ["S-28", "S-29", "S-30", "S-31", "S-33", "S-34"],
+      "primary_slice": "S-30"
+    },
+    "21_accurate_status": {
+      "action": "See accurate slice status across all concurrent sessions",
+      "slices": ["S-28", "S-29", "S-31", "S-33", "S-34"],
+      "primary_slice": "S-31"
+    },
+    "22_migrate_state": {
+      "action": "Migrate existing projects to the new state format",
+      "slices": ["S-28", "S-32", "S-34"],
+      "primary_slice": "S-32"
     }
   }
 }

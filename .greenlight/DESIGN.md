@@ -1,30 +1,58 @@
-# System Design: Verification Tiers
+# System Design: File-Per-Slice State (Parallel Session Safety)
 
 > **Project:** Greenlight
-> **Scope:** Add verification tier system to close the gap between "tests pass" and "user got what they asked for" -- per-contract verification levels (auto/verify), human acceptance gates, rejection-to-TDD routing, and escalation.
-> **Stack:** Go 1.24, stdlib only. Deliverables are embedded markdown content plus one manifest entry.
-> **Date:** 2026-02-19
-> **Replaces:** Previous DESIGN.md (circuit-breaker -- complete, 456 tests passing)
+> **Scope:** Fix concurrent session state corruption by replacing the single STATE.md with per-slice state files. Each session writes only to its own slice's file, eliminating write conflicts entirely. STATE.md becomes a generated summary view.
+> **Stack:** Go 1.24, stdlib only. Deliverables are embedded markdown content plus manifest entries.
+> **Date:** 2026-02-22
+> **Replaces:** Previous DESIGN.md (verification-tiers -- complete, 710 tests passing)
 
 ---
 
 ## 1. Problem Statement
 
-Tests pass but output doesn't match user intent. The current system has a blind spot: after the verifier confirms contract coverage and test results, the slice is marked complete -- but "tests pass" doesn't mean "the user got what they asked for." The system is marking its own homework.
+When multiple Claude Code sessions run `/gl:slice` in parallel, they all perform read-modify-write cycles on a single STATE.md file without coordination. Last write wins, previous updates are lost.
 
-**Real-world failure mode:** User asks for a card-based campaign visualization. Tests pass (component renders, data flows, assertions pass). But the actual output is a table with card styling -- not the card layout the user intended. The verifier sees tests passing and marks the slice complete. The user only discovers the mismatch later.
+**Initial failure mode (Session 1):** Session A starts S2.5, Session B starts S2.6, Session C starts S3.1 -- all reading STATE.md before any writes complete. Sessions write back in arbitrary order. Result: only the last writer's state survives. S3.1 was actively being built (test file existed on disk) but was not listed in STATE.md's Parallel section. The orchestrator in another session had no way to know S3.1 was taken, risking duplicate work or conflicts.
 
-### Current State Gap
+### Confirmed Failure Modes (Session 2, 2026-02-22)
 
-The existing `/gl:slice` pipeline (Step 6 verification + Step 9 visual checkpoint) has four gaps:
+A second investigation with 4 concurrent terminals (S2.5, S2.6, S2.7, S3.1; later S2.8, S3.4) confirmed the bug is ongoing and identified failure modes beyond lost writes:
 
-1. **No human verification for non-UI slices.** The `visual_checkpoint` toggle only triggers for UI slices. Business logic, API behavior, and data processing slices skip human verification entirely. Tests pass and the slice is marked complete.
+**1. Invisible work.** Sessions have no mechanism to signal they've started a slice before their first commit. A session mid-slice writing tests has produced zero commits. The only evidence it exists is a running process in another terminal. There is no file, no lock, no signal. Other sessions cannot determine which slices are taken.
 
-2. **Visual checkpoint is binary.** It either runs or it doesn't. There is no middle ground between "automated verification only" and "user must run the app and look at it." A structured acceptance review (checking criteria without running the app) is not supported.
+**2. False availability.** Slices that are actively being worked on appear as `pending` in STATE.md, inviting duplicate work. S3.4 (ClassificationBreakdown) had test and implementation commits in git (`40ce481`, `0b2ab6f`) but STATE.md showed it as `pending` with `0/0` tests because the session running S3.4 hadn't written back yet.
 
-3. **No rejection-to-TDD loop.** When the visual checkpoint surfaces a mismatch, the orchestrator spawns a debugger. This breaks TDD discipline -- the correct response is to write a test that captures the user's intent, then make the implementer pass it.
+**3. Stale pointers.** The Current/Parallel sections point to the wrong terminal. STATE.md showed `Current: S2.8 — Recording completion` in a terminal that was idle. The session actually working on S2.8 was in a different terminal. The Parallel section read "None" throughout despite 4 active sessions -- every session overwrites the entire file, sets itself as Current, and doesn't know about other sessions.
 
-4. **No escalation on repeated rejection.** If the user keeps rejecting, the system keeps looping. There is no circuit-breaker equivalent for human verification -- no threshold where the system acknowledges "this slice needs re-scoping."
+**4. Status field corruption.** S3.2 (SnoreScoreGauge) had full git history through security fix and docs commit (`ebeb1a5`), but STATE.md showed it as `pending` with `0/0` tests. A later write from the S3.2 session corrected it, but during the window between completion and that write, any other session reading STATE.md would see S3.2 as unstarted.
+
+**5. Three-source inconsistency.** At any given moment, STATE.md, git log, and terminal reality all disagree:
+
+| Source | Shows S3.4 as | Shows S2.8 as |
+|--------|--------------|--------------|
+| STATE.md | pending (wrong) | current/tests (partially right) |
+| Git log | in progress -- has test + impl commits | pending -- no commits |
+| Reality | in progress in terminal 2 | in progress in terminal 1 |
+
+No single source gives the correct picture. STATE.md lies due to write races. Git only shows committed work. The actual terminal processes are invisible to each other.
+
+### Root Cause
+
+STATE.md is a single mutable file used as the source of truth for all slice state. Multiple concurrent sessions perform uncoordinated read-modify-write cycles on it. There is no file locking, no atomic updates, and no conflict detection.
+
+### Why File-Per-Slice Solves This
+
+If each slice's state lives in its own file (`S-28.md`), sessions writing to different slices never touch the same file. The race condition is structurally impossible -- not prevented by locks, but eliminated by design.
+
+The file-per-slice solution addresses all five failure modes:
+
+| Failure Mode | Fix |
+|---|---|
+| Invisible work | Session writes `status: in_progress` + `session` field to slice file **immediately** on `/gl:slice` start, before any agent work |
+| False availability | Each session owns its slice file -- no other session can overwrite its status to `pending` |
+| Stale pointers | No shared Current/Parallel sections. Active slices derived from individual file status fields |
+| Status field corruption | One file per slice, one writer per file. No read-modify-write on a shared monolith |
+| Three-source inconsistency | Slice file becomes the single source of truth. Written before first commit, updated throughout |
 
 ---
 
@@ -32,52 +60,59 @@ The existing `/gl:slice` pipeline (Step 6 verification + Step 9 visual checkpoin
 
 ### 2.1 Functional Requirements
 
-**FR-1: Per-Contract Verification Tier.** Every contract has a `verification` field with value `auto` or `verify`. Default is `verify`. The tier determines what happens after tests pass and the verifier approves.
+**FR-1: File-per-slice state storage.** Each slice gets its own state file at `.greenlight/slices/{slice-id}.md`. The file is the authoritative source of truth for that slice's status, step, test counts, timestamps, decisions, and files touched.
 
-**FR-2: Auto Tier Behavior.** When all contracts in a slice are tier `auto`, the slice proceeds directly from verification (Step 6) to summary/docs (Step 7). No human checkpoint. This is the current default behavior, preserved for infrastructure, config, and internal plumbing slices.
+**FR-2: Conflict-free concurrent writes.** Multiple sessions running `/gl:slice` in parallel write only to their own slice's file. No shared mutable file for slice state. The concurrent write conflict is eliminated by design, not by locking.
 
-**FR-3: Verify Tier Behavior.** When any contract in a slice has tier `verify`, the orchestrator presents a structured checkpoint combining acceptance criteria and optional steps. The user confirms the output matches intent or describes what doesn't match. This subsumes the existing `visual_checkpoint` functionality.
+**FR-3: Generated summary view.** `/gl:status` reads all slice files from `.greenlight/slices/` and computes a summary. STATE.md becomes generated output (marked with a comment header), not a source of truth.
 
-**FR-4: Tier Resolution.** A slice's effective verification tier is the highest tier among all its contracts: `verify` > `auto`. Acceptance criteria and steps from all `verify` contracts are aggregated into a single checkpoint. One approval per slice.
+**FR-4: Project-level state separation.** Non-slice state (session metadata, active blockers, project overview) lives in `.greenlight/project-state.json`. This file is read/written by at most one session at a time (the orchestrator).
 
-**FR-5: Rejection Flow to Test Writer.** When the user rejects (anything other than "approved"), the orchestrator collects the feedback, presents structured options that implicitly classify the gap (test gap, implementation gap, or contract gap), and routes accordingly:
-- Test gap or implementation gap: spawn test writer with rejection feedback (behavioral, no implementation details), contract, and acceptance criteria. New tests written, then implementer makes them pass.
-- Contract gap: present to user for contract revision, then restart slice.
+**FR-5: Backward compatibility.** The system detects which state format is active:
+- `.greenlight/slices/` directory exists -> file-per-slice format
+- `.greenlight/STATE.md` exists (no slices/) -> legacy format
+- Neither exists -> no state, suggest `/gl:init`
+Old projects continue working with STATE.md until explicitly migrated.
 
-**FR-6: Rejection Counter with Escalation.** Track rejections per slice. After 3 rejections on the same slice, trigger escalation with options: re-scope the slice, pair with user for detailed guidance, or skip verification (mark as auto and proceed with known mismatch).
+**FR-6: Migration command.** `/gl:migrate-state` converts an existing STATE.md project to file-per-slice format. Migration is one-way, creates a backup of STATE.md, and is all-or-nothing.
 
-**FR-7: Contract Schema Extension.** Add three optional fields to the contract format: `verification` (auto/verify, default verify), `acceptance_criteria` (list of behavioral criteria), `steps` (list of steps to verify, optional). If `verification` is `verify`, warn if both `acceptance_criteria` and `steps` are empty. If `verification` is `auto`, `acceptance_criteria` and `steps` are ignored.
+**FR-7: Slice file self-documentation.** Each slice file contains structured frontmatter (machine-readable) and markdown body sections (human-readable): Why, What, Dependencies, Contracts, Decisions, Files. The file is a living record of the slice, not just status tracking.
 
-**FR-8: Backward Compatibility.** Contracts without an explicit `verification` field default to `verify`. The existing `config.workflow.visual_checkpoint` toggle is deprecated with a warning -- tiers in contracts supersede it.
+**FR-8: State abstraction in all commands.** All state-reading commands check format detection before reading. Commands work identically regardless of which format is active. Detection logic is documented in a reference file so all agents implement it consistently.
+
+**FR-9: Advisory session tracking.** When a session starts working on a slice, it records a session identifier (ISO timestamp + random suffix) in the slice file's frontmatter `session` field. Other sessions reading the slices directory can see which slices are actively being worked on and warn before claiming a slice in progress.
+
+**FR-10: STATE.md regeneration.** STATE.md is regenerated after every state write operation, keeping it in sync as a convenience view without requiring explicit generation commands.
 
 ### 2.2 Non-Functional Requirements
 
-**NFR-1: Zero Go Code for Protocol.** The verification tier protocol is entirely embedded content (markdown files in `src/`). The only Go change is adding the new reference file to the installer manifest.
+**NFR-1: No file locking required.** The design eliminates the need for OS-level file locks by ensuring each session writes only to its own slice file. The only coordination is advisory (session tracking in frontmatter).
 
-**NFR-2: Context Budget.** The verification tiers reference document must be concise enough that loading it does not push the orchestrator agent past the 30% context threshold. Target: under 150 lines.
+**NFR-2: Performance.** Reading 50+ slice files for `/gl:status` must complete in under 1 second. Go's `os.ReadDir` plus sequential file reads handles this easily for the expected scale (10-50 slices per milestone).
 
-**NFR-3: Agent Isolation Preserved.** The test writer receives the user's rejection feedback verbatim (behavioral description), the contract, and acceptance criteria. No implementation code, no test source code from the current cycle. The implementer still receives test names only.
+**NFR-3: Zero external dependencies.** All Go code changes must use stdlib only. Frontmatter is parsed by Claude Code agents (which read markdown natively), not by the Go binary. The flat key-value frontmatter format is trivially parseable with line-by-line string splitting if the Go CLI ever needs to parse slice files (e.g., `doctor` command).
 
-**NFR-4: Checkpoint Consistency.** Verification tier checkpoints follow the same format patterns as existing checkpoint types (Visual, Decision, External Action, Circuit Break) in `references/checkpoint-protocol.md`.
+**NFR-4: Crash safety.** Writes to slice files use write-to-temp-then-rename pattern. Temp files are created in `.greenlight/slices/` (same directory, same filesystem) to guarantee atomic rename on POSIX systems.
 
 ### 2.3 Constraints
 
-- Go 1.24, stdlib only. No external dependencies.
-- All content embedded via `go:embed` from `src/` directory.
-- Must integrate with existing agent isolation rules.
-- Must not break existing 456 tests.
-- Must preserve existing circuit breaker protocol -- verification tiers are additive.
-- Must preserve existing deviation rules protocol.
-- Rejection routing must go through the test writer first (TDD-correct approach).
+- Go 1.24 stdlib only (no external dependencies)
+- This is primarily embedded content changes (markdown in `src/`), not Go library code
+- Must be backward compatible with existing projects using STATE.md
+- Agents (Claude Code sessions) parse the files, not the Go binary
+- Must work on macOS and Linux (POSIX `rename` atomicity)
+- Must not break existing 710 tests
 
 ### 2.4 Out of Scope
 
-- **Automated acceptance detection.** The system does not auto-detect whether acceptance criteria are met. A human decides.
-- **Screenshot comparison.** No visual diffing or pixel-level verification. Human eyes only.
-- **Partial approval.** The user approves or rejects the entire slice checkpoint, not individual criteria. Future work could support per-criterion approval.
-- **Rejection history persistence.** Rejection feedback is passed to the test writer in the current cycle. It is not persisted to `.greenlight/` for cross-session reference. Future work could save rejection history.
-- **Configurable rejection threshold.** 3 rejections per slice is fixed. Matches the circuit breaker's per-test threshold. Configurability deferred until real-world data calibrates the right default.
-- **AI-assisted gap classification.** The orchestrator presents options to the user. It does not use AI to auto-classify the gap type. The user's choice is the classification.
+- OS-level file locking mechanisms (design eliminates the need)
+- Real-time state synchronization between sessions
+- Database-backed state storage
+- Distributed state across machines
+- Dual-write transition period (detect-and-migrate is sufficient)
+- Windows-specific atomicity guarantees
+- Automatic conflict resolution if two sessions claim the same slice
+- Slice archival for completed milestones
 
 ---
 
@@ -85,335 +120,321 @@ The existing `/gl:slice` pipeline (Step 6 verification + Step 9 visual checkpoin
 
 | # | Decision | Chosen | Rejected | Rationale |
 |---|----------|--------|----------|-----------|
-| 1 | Verification tier count | Two tiers: `auto` and `verify` | Three tiers (auto/review/demo) -- the distinction between review and demo is artificial. In both cases the user opens the app, looks at output, and confirms intent. The contract author doesn't need to choose between "check a list" and "walk through steps." | Simpler is better. One decision: "Can tests alone capture my intent for this slice?" Two tiers, not three. |
-| 2 | Default verification tier | `verify` -- forgetting to set a tier gives a human checkpoint | `auto` (current behavior, but unsafe) | Safe default. Forgetting to annotate a contract gives you human verification, not silent auto-approve. The cost of an unnecessary verify checkpoint is low (user types "approved"). The cost of a missing checkpoint is a completed slice that doesn't match intent. |
-| 3 | Tier location | In the contract, not in GRAPH.json or config.json | GRAPH.json (per-slice only, loses contract granularity); config.json (global only, no per-boundary control) | The contract is the source of truth for what a boundary does and how it's verified. Tier is a property of the boundary, not the build graph or the project config. |
-| 4 | Rejection routing | Always through test writer first, even for implementation gaps | Direct to implementer with "fix this" instructions; Direct to debugger | TDD-correct. If the implementation is wrong and tests pass, the tests weren't tight enough. Adding a test that specifically asserts the user's intent, then making the implementer pass it, is the right fix. The implementer never gets "fix this" -- they get new failing tests. |
-| 5 | Tier resolution across contracts | Highest tier wins + aggregation. verify > auto. One checkpoint per slice. | Per-contract checkpoints (too many interruptions); Per-slice config only (loses contract granularity) | Minimizes user interruptions. A slice with mixed tiers gets the highest tier with all criteria aggregated. |
-| 6 | Rejection counter scope | Per-slice, escalation at 3 | Per-contract (each contract gets 3 rejections independently) | A slice is the unit of work. If a user has rejected 3 times, the whole slice needs re-scoping. Mirrors the circuit breaker's slice-level ceiling concept. |
-| 7 | Gap classification UX | Orchestrator presents actionable options that implicitly map to gap types | Ask user to classify directly ("Is this a test gap?"); Auto-classify with heuristics | Users should not need to understand Greenlight's internal taxonomy. Present options like "tighten the tests," "revise the contract," or "provide more detail." The user picks what feels right; the orchestrator routes. |
-| 8 | Rejection feedback to test writer | User's verbatim behavioral feedback + contract + acceptance criteria. No implementation details. | Include implementation code (breaks isolation); Include test source (breaks TDD) | Preserves agent isolation. The user's rejection is behavioral ("I expected X, I got Y"). The test writer uses this behavioral description plus the contract to write tighter tests. No implementation leakage. |
-| 9 | visual_checkpoint backward compatibility | Deprecate with warning. Tiers in contracts supersede it. Keep in config but ignore. | Remove from config (breaking change); Add new config field (unnecessary -- tiers live in contracts) | The default `verify` tier already provides human verification for all non-auto slices. The `visual_checkpoint` toggle is redundant. Deprecation with warning is the cleanest migration path. |
-| 10 | New reference file | New `references/verification-tiers.md` (follows circuit-breaker.md pattern) | Extend `references/verification-patterns.md` (different concerns -- automated vs human) | Existing verification-patterns.md covers automated verification (stubs, wiring, test quality). Verification tiers cover human acceptance. Different concerns, different audiences. |
-| 11 | Verify checkpoint content | Combined: `acceptance_criteria` (what to check) + `steps` (how to check, optional) under one tier | Separate review and demo tiers with different required fields | The user does the same thing in both cases: look at the output and confirm intent. Criteria describe what to verify. Steps describe how, when the how isn't obvious. Both optional but warn if neither present. |
+| D-30 | Frontmatter format | Flat key-value between `---` delimiters (YAML-like) | Full YAML (requires external dep `gopkg.in/yaml.v3`); JSON frontmatter (less readable in markdown) | Go stdlib has no YAML parser. Flat key-value is parseable by both Claude (reads markdown natively) and Go (line-by-line string split). All needed fields are flat -- no nesting required for slice metadata. |
+| D-31 | State detection strategy | Check for `.greenlight/slices/` directory existence | Version field in config.json; Magic comment in STATE.md | Directory existence is the simplest, most reliable signal. No config migration needed. Works even if config.json is missing or corrupt. |
+| D-32 | Migration approach | One-way explicit `/gl:migrate-state` command | Automatic migration on first access; Dual-write transition period | Explicit migration is safer -- user controls when it happens. Automatic migration risks corrupting state during a critical operation. Dual-write adds complexity with minimal benefit since detect-and-migrate is sufficient. |
+| D-33 | Session tracking | Advisory: ISO timestamp + random suffix in frontmatter `session` field | No tracking (blind); OS-level file locks; PID-based tracking | Advisory tracking lets other sessions warn without blocking. PID is meaningless across machines or after crashes. File locks are fragile and leave stale locks after crashes. Timestamp + random suffix is unique enough and human-readable. |
+| D-34 | STATE.md regeneration trigger | After every state write operation | Only on `/gl:status` (requires explicit generation); Never (deprecate entirely) | Keeps STATE.md in sync as a convenience view. Minimal cost (read all slice files + one write per state change). Humans and tools that grep STATE.md continue working without behavior changes. |
+| D-35 | project-state.json contents | Session metadata + active blockers + project overview | Session metadata only (too minimal); Everything from STATE.md (duplicates slice data) | Session metadata and blockers are the only non-slice state that changes during execution. Overview (value prop, stack, mode) is stable context that belongs here. Decisions have their own file (DECISIONS.md). |
+| D-36 | Slice file naming | `{slice-id}.md` (e.g., `S-28.md`) | Slugified name (`file-per-slice-state.md`); Sequential number; UUID | Slice ID is already unique, human-readable, and matches GRAPH.json entries. No translation or lookup needed. |
+| D-37 | Backward compatibility duration | Indefinite (both formats supported forever) | Deprecation timeline; Force migration after N versions | No cost to supporting both formats. Detection is a single directory existence check. Removing legacy support would break existing projects for no benefit. |
+| D-38 | Dual-write period | No dual-write | Optional dual-write safety net during migration | Dual-write adds complexity and introduces its own bugs (e.g., partial writes to one format). Clean cutover via `/gl:migrate-state` with backup is simpler and more reliable. |
 
 ---
 
 ## 4. Architecture
 
-### 4.1 Component Overview
-
-The verification tier system is five components distributed across existing system files plus one new file:
+### 4.1 New File Structure
 
 ```
-src/
-  CLAUDE.md                          # +4 lines: hard rule reference
-  references/
-    verification-tiers.md            # NEW: full protocol (~130 lines)
-                                     #   - tier definitions and defaults
-                                     #   - verify checkpoint format
-                                     #   - rejection flow
-                                     #   - rejection counter + escalation
-                                     #   - gap classification routing
-    checkpoint-protocol.md           # MODIFY: add Acceptance checkpoint type
-                                     #   deprecate Visual, update mode table
-    verification-patterns.md         # MODIFY: add cross-reference to tiers
-  agents/
-    gl-architect.md                  # MODIFY: add verification/acceptance_criteria/
-                                     #   steps to contract format
-    gl-verifier.md                   # MODIFY: report tier in verification output
-  commands/
-    gl/
-      slice.md                       # MODIFY: add Step 6b (verification tier gate)
-                                     #   modify Step 9 (deprecate, reference tiers)
-                                     #   add rejection flow handling
-  templates/
-    config.md                        # MODIFY: deprecation note on visual_checkpoint
-
-internal/
-  installer/
-    installer.go                     # +1 manifest entry:
-                                     #   "references/verification-tiers.md"
+.greenlight/
+  slices/                    # NEW: per-slice state directory
+    S-01.md                  # One file per slice
+    S-02.md
+    ...
+    S-28.md
+  project-state.json         # NEW: non-slice state
+  STATE.md                   # CHANGED: now generated, not source of truth
+  GRAPH.json                 # Unchanged
+  CONTRACTS.md               # Unchanged
+  config.json                # Unchanged
+  DESIGN.md                  # Unchanged
+  ROADMAP.md                 # Unchanged
+  DECISIONS.md               # Unchanged
+  summaries/                 # Unchanged
 ```
 
-### 4.2 Component 1: Verification Tier Gate (Step 6b)
-
-**Lives in:** `commands/gl/slice.md` (new step) + `references/verification-tiers.md` (protocol)
-
-After Step 6 (verification passes) and Step 6a (locking-to-integration transition, if applicable), the orchestrator reads the verification tier for each contract in the slice and resolves the effective tier.
-
-**Tier resolution:**
-
-```
-For each contract in the slice:
-  Read contract.verification (default: "verify")
-
-Effective tier = highest tier among all contracts:
-  verify > auto
-
-If effective tier is auto:
-  Skip to Step 7 (summary/docs)
-
-If effective tier is verify:
-  Aggregate acceptance_criteria from all verify contracts
-  Aggregate steps from all verify contracts
-  Present Verify Checkpoint
-  Wait for user response
-```
-
-### 4.3 Component 2: Verify Checkpoint
-
-**Lives in:** `references/verification-tiers.md`
-
-Format presented to the user:
-
-```
-ALL TESTS PASSING — Slice {slice_id}: {slice_name}
-
-Please verify the output matches your intent.
-
-Acceptance criteria:
-  [ ] {criterion 1 from contract A}
-  [ ] {criterion 2 from contract A}
-  [ ] {criterion 3 from contract B}
-
-Steps to verify:
-  1. {step 1 from contract A}
-  2. {step 2 from contract A}
-  3. {step 3 from contract B}
-
-Does this match what you intended?
-  1) Yes — mark complete and continue
-  2) No — I'll describe what's wrong
-  3) Partially — some criteria met, I'll describe the gaps
-```
-
-If only criteria exist, show criteria. If only steps exist, show steps. If both exist, show both. If neither exists (shouldn't happen due to validation warning, but handle gracefully), just ask "Does the output match your intent?"
-
-### 4.4 Component 3: Rejection Flow
-
-**Lives in:** `references/verification-tiers.md` (protocol) + `commands/gl/slice.md` (orchestrator integration)
-
-When the user types anything other than "Yes" (option 1):
-
-1. **Capture feedback.** Store the user's verbatim response.
-
-2. **Present classification options.** The orchestrator presents:
-
-```
-Your feedback: "{user's response}"
-
-How should we address this?
-
-1) Tighten the tests -- the tests aren't specific enough to catch this mismatch
-   (routes to: test writer adds more precise assertions, then implementer passes them)
-
-2) Revise the contract -- the contract doesn't capture what I actually want
-   (routes to: you update the contract, then the slice restarts)
-
-3) Provide more detail -- I'll describe exactly what I expect
-   (routes to: test writer uses your detail to write targeted tests, then implementer passes them)
-
-Which option? (1/2/3)
-```
-
-3. **Route based on choice:**
-
-| Choice | Internal classification | Action |
-|--------|----------------------|--------|
-| 1 (tighten tests) | Test gap | Spawn test writer with: rejection feedback (verbatim), contract, acceptance criteria. Test writer adds/tightens tests. Then spawn implementer to pass them. Re-run verification tier gate. |
-| 2 (revise contract) | Contract gap | Present contract to user for revision. User edits acceptance criteria or contract definition. Restart slice from Step 1. |
-| 3 (provide detail) | Implementation gap | Collect detailed description from user. Spawn test writer with: detailed description, rejection feedback, contract, acceptance criteria. Test writer writes targeted tests. Then spawn implementer. Re-run verification tier gate. |
-
-4. **Increment rejection counter.** After any rejection, increment the per-slice rejection count.
-
-### 4.5 Component 4: Rejection Counter and Escalation
-
-**Lives in:** `references/verification-tiers.md`
-
-The orchestrator tracks rejections per slice:
-
-```yaml
-slice_id: S-{N}
-rejection_count: 0          # Increments on each non-"approved" response
-rejection_log:
-  - feedback: "{user's words}"
-    classification: "test_gap"
-    action_taken: "spawned test writer with feedback"
-  - feedback: "{user's words}"
-    classification: "implementation_gap"
-    action_taken: "spawned test writer with detailed description"
-```
-
-When `rejection_count` reaches 3:
-
-```
-ESCALATION: {slice_name}
-
-This slice has been rejected 3 times. The verification criteria may not match
-what the contracts and tests can deliver.
-
-Rejection history:
-1. "{feedback 1}" -> {action taken}
-2. "{feedback 2}" -> {action taken}
-3. "{feedback 3}" -> {action taken}
-
-Options:
-1) Re-scope -- the contract is fundamentally wrong. Revise contracts and restart.
-2) Pair -- provide detailed, step-by-step guidance for exactly what you want.
-3) Skip verification -- mark this slice as auto-verified and proceed.
-   (The mismatch is acknowledged but deferred.)
-
-Which option? (1/2/3)
-```
-
-### 4.6 Component 5: Contract Schema Extension
-
-**Lives in:** `agents/gl-architect.md` (contract format addition)
-
-Three new optional fields added after the Security section in the contract format:
+### 4.2 Slice State File Schema
 
 ```markdown
-**Verification:** verify
-**Acceptance Criteria:**
-- User can see campaign cards in a grid layout
-- Each card shows campaign name, status, and key metric
-- Cards are clickable and navigate to campaign detail
+---
+id: S-28
+status: implementing
+step: security
+milestone: parallel-state
+started: 2026-02-22
+updated: 2026-02-22T14:30:00Z
+tests: 12
+security_tests: 2
+session: 2026-02-22T14:00:00Z-a7f3
+deps: S-26,S-27
+---
 
-**Steps:**
-- Run `npm run dev` and open localhost:3000
-- Navigate to /campaigns
-- Verify cards render in a 3-column grid
+# S-28: File-per-slice state storage
+
+## Why
+Concurrent sessions corrupt STATE.md because of uncoordinated read-modify-write cycles.
+
+## What
+Each slice gets its own state file. Sessions write only to their own slice file, eliminating write conflicts by design.
+
+## Dependencies
+- S-26: Verification tier documentation (complete)
+- S-27: Architect integration (complete)
+
+## Contracts
+- C-50: SliceStateReader
+- C-51: SliceStateWriter
+
+## Decisions
+- 2026-02-22: Used flat key-value frontmatter instead of nested YAML to maintain zero external dependencies
+
+## Files
+- src/templates/slice-state.md (new)
+- src/references/state-format.md (new)
+- src/commands/gl/migrate-state.md (new)
 ```
 
-Field rules:
-- `verification`: Optional. Values: `auto`, `verify`. Default: `verify`.
-- `acceptance_criteria`: Optional under `verify`. List of behavioral statements the user can verify. Warn if empty when tier is `verify`.
-- `steps`: Optional under `verify`. List of steps the user runs to verify the feature. Include when the how-to-verify isn't obvious. Warn if both `acceptance_criteria` and `steps` are empty when tier is `verify`.
+### 4.3 Frontmatter Field Definitions
 
-### 4.7 CLAUDE.md Addition
+| Field | Type | Values | Required | Description |
+|-------|------|--------|----------|-------------|
+| `id` | string | `S-{N}` or `S-{NN}` | yes | Slice identifier, matches GRAPH.json |
+| `status` | enum | `pending`, `ready`, `tests`, `implementing`, `security`, `fixing`, `verifying`, `complete` | yes | Current slice status |
+| `step` | string | `none`, `tests`, `implementing`, `security`, `fixing`, `verifying`, `complete` | yes | Current step within the TDD loop |
+| `milestone` | string | milestone slug | yes | Which milestone this slice belongs to |
+| `started` | ISO date | `YYYY-MM-DD` or empty | no | When work began on this slice |
+| `updated` | ISO timestamp | `YYYY-MM-DDTHH:MM:SSZ` | yes | Last modification time |
+| `tests` | integer | >= 0 | yes | Number of passing functional tests |
+| `security_tests` | integer | >= 0 | yes | Number of passing security tests |
+| `session` | string | `{ISO-timestamp}-{random}` or empty | no | Advisory: which session is actively working on this slice |
+| `deps` | comma-separated | `S-01,S-02` or empty | no | Slice dependencies (references other slice IDs) |
 
-Added to `src/CLAUDE.md` after the "Circuit Breaker" section:
+### 4.4 project-state.json Schema
+
+```json
+{
+  "overview": {
+    "value_prop": "TDD-first development system for Claude Code",
+    "stack": "Go 1.24 (stdlib only)",
+    "mode": "yolo"
+  },
+  "session": {
+    "last_session": "2026-02-22T14:30:00Z",
+    "resume_file": null
+  },
+  "blockers": []
+}
+```
+
+### 4.5 State Detection Logic
+
+Every command that reads state must follow this detection flow:
+
+```
+ReadState():
+  if directoryExists(".greenlight/slices/"):
+    return readSliceFiles(".greenlight/slices/")
+  else if fileExists(".greenlight/STATE.md"):
+    return parseLegacyState(".greenlight/STATE.md")
+  else:
+    return NoStateError("Run /gl:init to get started")
+```
+
+This logic is documented once in `references/state-format.md` and referenced by all commands.
+
+### 4.6 Generated STATE.md Format
+
+When using file-per-slice format, STATE.md is regenerated after every state write:
 
 ```markdown
-### Verification Tiers
-- Every contract has a verification tier: `auto` or `verify` (default)
-- After tests pass and verifier approves, the tier gate determines if human acceptance is required
-- Rejection feedback routes to the test writer first -- if the implementation is wrong, the tests weren't tight enough
-- Full protocol: `references/verification-tiers.md`
+<!-- GENERATED by greenlight -- source of truth is .greenlight/slices/*.md -->
+<!-- Do not edit this file directly. Changes will be overwritten. -->
+# Project State
+
+## Overview
+[from project-state.json overview section]
+Stack: [from project-state.json]
+Mode: [from project-state.json]
+
+## Slices
+
+| ID | Name | Status | Tests | Security | Deps |
+|----|------|--------|-------|----------|------|
+[computed by reading all .greenlight/slices/*.md frontmatter]
+
+Progress: [computed progress bar] done/total slices
+
+## Current
+
+[list of slices where status is not pending and not complete, with their current step]
+
+## Test Summary
+
+Total: N passing, N failing, N security
+[sum of tests and security_tests from all slice files]
+
+## Blockers
+
+[from project-state.json blockers array]
+
+## Session
+
+Last session: [from project-state.json]
+Resume file: [from project-state.json]
 ```
 
----
+### 4.7 Migration Flow (/gl:migrate-state)
 
-## 5. Data Model
+```
+1. Verify .greenlight/STATE.md exists
+2. Verify .greenlight/slices/ does NOT exist (prevent double migration)
+3. Parse STATE.md:
+   a. Extract slice table rows (ID, Name, Status, Tests, Security, Deps)
+   b. Extract Current section (active slice, step)
+   c. Extract Decisions section
+   d. Extract Blockers section
+   e. Extract Session section
+   f. Extract Overview section (value prop, stack, mode)
+4. Create .greenlight/slices/ directory
+5. For each slice row:
+   a. Create .greenlight/slices/{id}.md with frontmatter from table data
+   b. Populate minimal body sections (name in heading, deps listed)
+   c. If this is the current slice, set step from Current section
+6. Create .greenlight/project-state.json from non-slice sections
+7. Rename .greenlight/STATE.md to .greenlight/STATE.md.backup
+8. Generate new .greenlight/STATE.md (generated format with header comment)
+9. Report: "Migrated N slices to file-per-slice format. Backup: STATE.md.backup"
+```
 
-No database entities. No persistent state files beyond what the orchestrator already maintains. The verification tier system operates within:
+### 4.8 Command Impact Matrix
 
-| Storage | What | Lifetime |
-|---------|------|----------|
-| Contract fields | verification, acceptance_criteria, steps | Permanent (in CONTRACTS.md) |
-| Orchestrator context | Rejection count, rejection log, effective tier | Single /gl:slice execution |
-| User feedback | Verbatim rejection text | Passed to test writer, then discarded |
-| Checkpoint output | Verify checkpoint markdown | Displayed to user (ephemeral) |
-
----
-
-## 6. Integration with Existing Systems
-
-### 6.1 /gl:slice Pipeline
-
-Changes to the pipeline:
-
-| Step | Current | After Verification Tiers |
-|------|---------|--------------------------|
-| Step 6 (Verification) | Verifier checks contract coverage, stubs, wiring | Unchanged -- verifier also reports tier from contracts |
-| Step 6b (NEW) | Does not exist | Verification tier gate: resolve tier, present checkpoint if verify, handle approval/rejection |
-| Step 7 (Summary/docs) | Runs after verification passes | Runs after verification tier gate passes (approval received or tier is auto) |
-| Step 9 (Visual checkpoint) | Reads config.workflow.visual_checkpoint | Deprecated -- log warning if visual_checkpoint is true, reference verification tiers instead |
-
-### 6.2 Circuit Breaker (references/circuit-breaker.md)
-
-No interaction. The circuit breaker handles implementation death spirals (Step 3). Verification tiers handle post-verification human acceptance (Step 6b). They operate on different steps in the pipeline and track different counters (attempt_count vs rejection_count).
-
-### 6.3 Checkpoint Protocol (references/checkpoint-protocol.md)
-
-The checkpoint type table gains one new type:
-
-| Checkpoint Type | Trigger | When to Pause |
-|-----------------|---------|---------------|
-| Visual | ~~UI slice needs human eyes~~ Deprecated -- use verify tier | interactive mode only |
-| Decision | Rule 4 architectural stop | always |
-| External Action | Human action needed outside Claude | always |
-| Circuit Break | 3 per-test or 7 per-slice failures | always |
-| **Acceptance** | **Slice verification tier is verify** | **always (even in yolo mode)** |
-
-Acceptance checkpoints always pause, even in yolo mode. The whole point of verification tiers is human confirmation -- skipping it defeats the purpose.
-
-### 6.4 Agent Isolation (CLAUDE.md)
-
-No changes to the isolation table. The test writer already cannot see implementation code. The rejection feedback is behavioral (user's words about what they expected vs. what they observed). The implementer still receives test names only.
-
-### 6.5 Deviation Rules (references/deviation-rules.md)
-
-No interaction. Deviation rules handle unplanned work during implementation. Verification tiers handle post-implementation acceptance. The rejection flow spawns agents through the normal /gl:slice pipeline, which already integrates deviation rules.
-
-### 6.6 gl-verifier Agent
-
-The verifier gains awareness of verification tiers:
-- Read the `verification` field from each contract
-- Include the effective tier in the verification report
-- Flag contracts that are missing both `acceptance_criteria` and `steps` when tier is `verify`
-
-This is informational -- the verifier reports tier status, it does not enforce the gate. The orchestrator enforces the gate.
+| Command | Current Reads | New Reads | Current Writes | New Writes |
+|---------|--------------|-----------|----------------|------------|
+| /gl:slice | STATE.md (pre-flight, Step 4, Step 10) | Own slice file + project-state.json | STATE.md (Step 4, Step 10) | Own slice file + regenerate STATE.md |
+| /gl:status | STATE.md (full read) | All slice files + project-state.json | Never | Regenerate STATE.md |
+| /gl:pause | STATE.md (current section) | Own slice file + project-state.json | STATE.md (session section) | Own slice file + project-state.json |
+| /gl:resume | STATE.md (full read) | All slice files + project-state.json | STATE.md (session section) | Own slice file + project-state.json |
+| /gl:ship | STATE.md (pre-check: all complete?) | All slice files | Never | Never |
+| /gl:init | N/A (creates STATE.md) | N/A (creates) | Creates STATE.md | Create slices/ dir + slice files + project-state.json |
+| /gl:add-slice | STATE.md (slice list) | All slice files | STATE.md (add row) | Create new slice file + regenerate STATE.md |
+| /gl:quick | STATE.md (test summary) | Relevant slice file | STATE.md (test counts) | Relevant slice file + regenerate STATE.md |
+| /gl:migrate-state | N/A (new command) | STATE.md (parse) | N/A (new) | Create slices/ + slice files + project-state.json |
 
 ---
 
-## 7. File Changes Summary
+## 5. File Changes in Codebase
 
-| File | Change | Lines Added/Modified |
-|------|--------|---------------------|
-| `src/references/verification-tiers.md` | **NEW** | ~130 lines |
-| `src/commands/gl/slice.md` | Add Step 6b, modify Step 9, add rejection handling | ~80 lines added/modified |
-| `src/agents/gl-architect.md` | Add verification/acceptance_criteria/steps to contract format | ~25 lines added |
-| `src/agents/gl-verifier.md` | Add tier awareness to verification report | ~15 lines added |
-| `src/references/checkpoint-protocol.md` | Add Acceptance checkpoint type, deprecate Visual, update mode table | ~20 lines modified |
-| `src/references/verification-patterns.md` | Add cross-reference to verification-tiers.md | ~5 lines added |
-| `src/templates/config.md` | Add deprecation note on visual_checkpoint | ~5 lines added |
-| `src/CLAUDE.md` | Add Verification Tiers rule | 4 lines added |
-| `internal/installer/installer.go` | Add 1 manifest entry | 1 line added |
-| `internal/installer/manifest_docs_test.go` | Update manifest count in tests | ~1 line modified |
+### 5.1 New Embedded Content (3 files)
 
-**Total new content:** ~280 lines of markdown, 2 lines of Go.
+| File | Purpose | Est. Lines |
+|------|---------|-----------|
+| `src/templates/slice-state.md` | Template and schema for per-slice state files. Documents frontmatter fields, body sections, lifecycle, status values, and examples. | ~120 |
+| `src/references/state-format.md` | Reference doc for state format detection, migration protocol, backward compatibility rules, concurrent access patterns, and advisory session tracking. | ~100 |
+| `src/commands/gl/migrate-state.md` | Command definition for `/gl:migrate-state`. Parses legacy STATE.md, creates slices/ directory, writes individual slice files, creates project-state.json, backs up STATE.md. | ~80 |
+
+### 5.2 Modified Embedded Content (11 files)
+
+| File | Change | Est. Lines Changed |
+|------|--------|--------------------|
+| `src/commands/gl/slice.md` | Update pre-flight (state detection), Step 4 (write to slice file), Step 10 (write to slice file + regenerate STATE.md). Add state format detection at start. | ~40 |
+| `src/commands/gl/status.md` | Read from slices/ directory instead of STATE.md. Compute summary from all slice files. Generate STATE.md. Add state detection fallback. | ~30 |
+| `src/commands/gl/pause.md` | Write session info to slice file and project-state.json instead of STATE.md. | ~15 |
+| `src/commands/gl/resume.md` | Read from slice files and project-state.json instead of STATE.md. State detection for both formats. | ~20 |
+| `src/commands/gl/ship.md` | Read all slice files for pre-check instead of STATE.md. State detection fallback. | ~15 |
+| `src/commands/gl/init.md` | Phase 6: create slices/ directory, write individual slice files, create project-state.json instead of single STATE.md. | ~30 |
+| `src/commands/gl/add-slice.md` | Step 6: create new slice file instead of updating STATE.md row. Regenerate STATE.md. | ~15 |
+| `src/commands/gl/quick.md` | Update test counts in relevant slice file instead of STATE.md. Regenerate STATE.md. | ~10 |
+| `src/templates/state.md` | Document both formats. Explain generated nature of STATE.md in file-per-slice mode. Add migration instructions. | ~30 |
+| `src/CLAUDE.md` | Add state format awareness rule: "Check `.greenlight/slices/` before reading STATE.md directly." | ~5 |
+| `src/references/checkpoint-protocol.md` | Update checkpoint save/restore to reference slice files for state context. | ~10 |
+
+### 5.3 Go Code Changes (1 file)
+
+| File | Change |
+|------|--------|
+| `internal/installer/installer.go` | Add 3 entries to Manifest: `"templates/slice-state.md"`, `"references/state-format.md"`, `"commands/gl/migrate-state.md"` |
+
+### 5.4 No Change Required
+
+- `main.go` -- existing `go:embed` glob patterns (`src/templates/*.md`, `src/references/*.md`, `src/commands/gl/*.md`) already cover the new file paths.
+- `internal/cli/cli.go` -- no new subcommands in the Go binary.
+- Agent definitions (`src/agents/*.md`) -- agents read state through commands, not directly. No agent file changes needed.
+
+**Total new content:** ~300 lines of markdown across 3 new files, ~220 lines modified across 11 existing files, 3 lines added to Go manifest.
 
 ---
 
-## 8. Proposed Build Order
+## 6. Data Model
+
+### 6.1 Entities
+
+**SliceState** (one per slice, stored as `.greenlight/slices/{id}.md`)
+- id: string (S-{N})
+- status: enum (pending, ready, tests, implementing, security, fixing, verifying, complete)
+- step: string (current position in TDD loop)
+- milestone: string (milestone slug)
+- started: date (optional, when work began)
+- updated: timestamp (last modification)
+- tests: integer (passing functional test count)
+- security_tests: integer (passing security test count)
+- session: string (optional, advisory session identifier)
+- deps: string[] (slice ID references)
+- body: markdown sections (why, what, dependencies, contracts, decisions, files)
+
+**ProjectState** (singleton, stored as `.greenlight/project-state.json`)
+- overview: { value_prop: string, stack: string, mode: string }
+- session: { last_session: timestamp, resume_file: string|null }
+- blockers: string[]
+
+### 6.2 Relationships
+
+- SliceState.deps references other SliceState.id values (dependency graph)
+- SliceState.milestone groups slices into milestones
+- ProjectState is independent of SliceState (no foreign keys between them)
+- GRAPH.json remains the canonical dependency graph; slice file `deps` field is denormalized for convenience
+
+---
+
+## 7. Security
+
+**Input validation on slice IDs:** Slice IDs must match pattern `S-{digits}` or `S-{digits}.{digits}`. File paths are constructed from validated IDs only. This prevents path traversal via malicious slice IDs (e.g., `S-../../etc/passwd`).
+
+**File permissions:** Slice files and project-state.json follow existing conventions: directories `0o755`, files `0o644`.
+
+**No sensitive data:** Slice files contain only project structure information -- status, test counts, file lists. No secrets, tokens, or PII.
+
+**Session tracking is advisory only:** The `session` field is informational. It does not provide access control or locking. A session cannot prevent another session from writing to a slice file -- it can only warn. This is intentional: blocking locks leave stale state after crashes.
+
+**Migration safety:** `/gl:migrate-state` creates a backup before modifying anything. If migration fails partway through, the backup preserves the original STATE.md. The slices/ directory is created atomically (all files written, then STATE.md renamed to backup).
+
+---
+
+## 8. Deployment
+
+No deployment changes. This is embedded content installed by the CLI binary. The binary size increases negligibly (3 new markdown files, ~300 lines total). No new Go packages, no new imports, no new binary dependencies.
+
+The manifest grows from 33 to 36 entries. The `go:embed` directive in `main.go` does not need updating because existing glob patterns already cover the new file locations.
+
+---
+
+## 9. Proposed Build Order
 
 These are logical groupings for the architect to refine into slices with contracts:
 
-1. **Schema Extension** -- Add `verification`, `acceptance_criteria`, `steps` fields to the contract format in `gl-architect.md`. Update the contract format template. Update `gl-verifier.md` to report tier in verification output. This is the foundation -- contracts must support tiers before anything else.
+1. **Slice state template and reference** -- Create `templates/slice-state.md` (schema, lifecycle, examples) and `references/state-format.md` (detection logic, concurrent access patterns, backward compatibility). These are the foundation documents that all other changes reference.
 
-2. **Verification Gate** -- Add Step 6b to `/gl:slice`. Read tier from contracts, resolve effective tier (verify > auto, aggregation), present Verify checkpoint, handle "approved" response. Simple gate -- no rejection handling yet. Create `references/verification-tiers.md` with tier definitions and checkpoint format.
+2. **State detection and /gl:init update** -- Update `/gl:init` to create slices/ directory and individual slice files instead of single STATE.md. Implement state format detection logic. Create project-state.json.
 
-3. **Rejection Flow** -- Handle non-"approved" responses in the verification gate. Present structured classification options. Route to test writer (with behavioral feedback, contract, acceptance criteria) or to user for contract revision. Resume TDD loop after new tests.
+3. **Core command updates (/gl:slice)** -- Update `/gl:slice` to read from and write to individual slice files. Add session tracking on slice claim. Regenerate STATE.md after writes.
 
-4. **Rejection Counter** -- Track rejections per slice. Increment on each rejection. Escalation at 3 with options: re-scope, pair, skip. Add escalation format to `references/verification-tiers.md`.
+4. **Supporting command updates** -- Update `/gl:status`, `/gl:pause`, `/gl:resume`, `/gl:ship`, `/gl:add-slice`, `/gl:quick` to use state detection and file-per-slice reads/writes.
 
-5. **Documentation and Deprecation** -- Update `CLAUDE.md` with verification tier rule. Update `references/checkpoint-protocol.md` with Acceptance checkpoint type and Visual deprecation. Update `references/verification-patterns.md` with cross-reference. Add deprecation note to `templates/config.md` for `visual_checkpoint`. Modify Step 9 of `/gl:slice` to log deprecation warning.
+5. **Migration command** -- Create `/gl:migrate-state` command. Parse legacy STATE.md, create slice files, create project-state.json, backup STATE.md.
 
-6. **Architect Integration** -- Update `gl-architect.md` to generate `acceptance_criteria` and `steps` from requirements. Add guidance for tier selection: `auto` for pure data/logic/infrastructure, `verify` for everything else (it's the default anyway). Update `gl-designer.md` to capture verification preferences during design sessions.
+6. **Documentation and CLAUDE.md** -- Update `src/CLAUDE.md` with state format awareness rule. Update `templates/state.md` to document both formats. Update `references/checkpoint-protocol.md`.
 
----
-
-## 9. Security
-
-No new security surface. The verification tier system:
-- Does not expose any external interfaces
-- Does not handle user input beyond the existing slash command and "approved"/free-text response pattern
-- Does not store credentials or sensitive data
-- Does not modify agent isolation boundaries
-
-The rejection flow has a **positive security property**: it prevents auto-completion of slices that may have security-relevant behavioral mismatches. A user reviewing acceptance criteria may catch issues that automated tests miss (e.g., "the API returns sensitive fields that shouldn't be visible").
+7. **Manifest and integration** -- Add 3 entries to Go manifest. Verify all embedded content is installed correctly. End-to-end verification.
 
 ---
 
@@ -421,12 +442,13 @@ The rejection flow has a **positive security property**: it prevents auto-comple
 
 | Item | Why Deferred | When to Revisit |
 |------|-------------|-----------------|
-| Partial approval (per-criterion) | Adds UX complexity; one approval per slice is simpler and sufficient for MVP | When users report needing granular approval on large slices |
-| Rejection history persistence | Currently ephemeral per-slice execution; no cross-session need identified | When users request post-mortem analysis of rejection patterns |
-| AI-assisted gap classification | Orchestrator presents options, user chooses; AI classification adds unreliable complexity | When classification accuracy can be measured against user choices |
-| Configurable rejection threshold (3) | Need real-world data to calibrate; matches circuit breaker threshold for consistency | After 20+ real-world rejections provide calibration data |
-| Screenshot/visual diffing | Requires tooling outside Go CLI scope; human eyes are more reliable for MVP | When visual regression testing tools are integrated |
-| Tier inference from contract content | Could auto-suggest verify for UI contracts, auto for infra | When architect consistently forgets to set tiers |
+| OS-level file locking | Design eliminates the need by ensuring each session writes to its own file. Advisory session tracking is sufficient for 1-3 concurrent sessions. | If users report frequent same-slice contention despite advisory warnings. |
+| Slice file validation in `doctor` command | The `doctor` command is in the cli-hardening milestone (pending). Slice file validation can be added as a doctor check there. | When cli-hardening milestone begins. |
+| Automatic conflict resolution | If two sessions accidentally claim the same slice, they get a warning. Automatic merge/rebase of slice state is premature complexity. | When users report this as a frequent problem. |
+| Slice archival | Completed slices accumulate in `.greenlight/slices/`. Archiving old milestone slices to a subdirectory could reduce clutter. | When projects exceed 100 slice files and users report navigation difficulty. |
+| Windows atomicity | `os.Rename` is not atomic on Windows. POSIX systems (macOS, Linux) are the primary target. | If Windows becomes a supported platform. |
+| Nested frontmatter (full YAML) | Flat key-value is sufficient for current fields. If future fields need nesting, would need either custom parser or external dependency. | If slice metadata requirements grow beyond flat key-value. |
+| Cross-session messaging | Sessions can see each other's slice state but cannot send messages. A notification mechanism (e.g., `.greenlight/messages/`) could help coordination. | If users report needing inter-session communication beyond advisory warnings. |
 
 ---
 
@@ -434,14 +456,11 @@ The rejection flow has a **positive security property**: it prevents auto-comple
 
 | # | Gray Area | Decision | Rationale |
 |---|-----------|----------|-----------|
-| 1 | Tier count | Two tiers: `auto` and `verify`. No `demo` or `review` distinction. | The distinction between "check a list" and "walk through steps" is artificial. Both involve looking at output and confirming intent. Two tiers, one decision: "Can tests alone capture intent?" |
-| 2 | Default tier | `verify` -- forgetting to set a tier gives a human checkpoint, not auto-approve | Safe default. The cost of an unnecessary verify is low. The cost of a missing verify is a completed slice that doesn't match intent. |
-| 3 | Tier location | In the contract, not in GRAPH.json or config.json | The contract is the source of truth for what a boundary does and how it's verified. |
-| 4 | Rejection routing | Always through test writer first, even for implementation gaps | TDD-correct. If the implementation is wrong and tests pass, the tests weren't tight enough. |
-| 5 | Tier resolution | Highest tier wins + aggregation. verify > auto. One checkpoint per slice. | Minimizes user interruptions. A slice with mixed tiers gets the highest tier with all criteria aggregated. |
-| 6 | Rejection counter | Per-slice, escalation at 3. | A slice is the unit of work. Mirrors the circuit breaker's slice-level ceiling. |
-| 7 | visual_checkpoint deprecation | Keep in config but deprecate with warning. Tiers in contracts supersede it. | Default `verify` tier already provides human verification. The toggle is redundant but harmless. |
-| 8 | Rejection feedback isolation | Test writer receives user's verbatim behavioral feedback, contract, and acceptance criteria. No implementation details. | Preserves agent isolation. User's words are about behavior, not implementation. |
-| 9 | Gap classification UX | Orchestrator presents actionable options that implicitly map to gap types. User picks; orchestrator routes. | Users should not need to understand Greenlight's internal taxonomy. |
-| 10 | Reference file location | New `references/verification-tiers.md` following the circuit-breaker.md pattern. | Different concern from existing verification-patterns.md. Automated vs human verification are separate topics. |
-| 11 | Verify checkpoint content | Combined: `acceptance_criteria` + `steps` under one tier. Criteria = what to check. Steps = how, when not obvious. Both optional but warn if neither present. | Eliminates the artificial review/demo split. One checkpoint format handles both structured acceptance and interactive demos. |
+| 1 | Dual-write period | No dual-write. Detect-and-migrate only. | Dual-write adds complexity and its own bugs (partial writes). Clean cutover via `/gl:migrate-state` with backup is simpler and more reliable. |
+| 2 | Session tracking approach | Advisory: ISO timestamp + random suffix in frontmatter. Warn, don't block. | Blocking locks are fragile -- stale locks after crashes require manual cleanup. Advisory warnings give developers enough information to coordinate without the risk of deadlocks. |
+| 3 | project-state.json scope | Session metadata + active blockers + project overview (value prop, stack, mode). | These are the only non-slice state fields. Decisions already have DECISIONS.md. Slice data lives in slice files. |
+| 4 | STATE.md regeneration | After every state write operation. | Keeps convenience view in sync. Minimal cost. Humans and tools that grep STATE.md continue working. |
+| 5 | Frontmatter format | Flat key-value between `---` delimiters (YAML-like but no nesting). | Go stdlib has no YAML parser. Flat format is parseable by both Claude (markdown reader) and Go (string split). All current fields are flat. |
+| 6 | Migration trigger | Explicit `/gl:migrate-state` command, not automatic. | User controls when state format changes. Prevents surprise migrations during critical slice operations. |
+| 7 | Backward compatibility | Indefinite support for both formats. | No cost to detection (one directory check). Removing legacy support would break existing projects for zero benefit. |
+| 8 | Slice file naming convention | `{slice-id}.md` directly (e.g., `S-28.md`). | Slice ID is already unique, human-readable, and matches GRAPH.json. No translation layer needed. |
