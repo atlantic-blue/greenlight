@@ -110,3 +110,52 @@ Status: {ready | blocked by {deps}}
 {if ready: "Run /gl:slice {id} to build it."}
 {if blocked: "Complete {deps} first, then /gl:slice {id}."}
 ```
+
+---
+
+## File-Per-Slice State Integration (C-84)
+
+This section documents how /gl:add-slice adapts its state writes when the project uses file-per-slice format (C-80). Legacy format behaviour is completely unchanged — if the state format is legacy, all writes go to STATE.md as before.
+
+### State Format Detection
+
+Detect state format (C-80) before performing any state reads or writes:
+
+- If file-per-slice: create a new slice file in `.greenlight/slices/{id}.md`, validate the slice ID, regenerate STATE.md (D-34)
+- If legacy: update STATE.md as before (no change)
+
+### File-Per-Slice Write Path
+
+When using file-per-slice format:
+
+1. Validate the slice ID to prevent path traversal attacks — the ID must not contain `..`, `/`, or other path-manipulation characters
+2. Create new slice file at `.greenlight/slices/{id}.md` with frontmatter (id, name, status: pending, deps, contracts)
+3. Update `.greenlight/CONTRACTS.md` and `.greenlight/GRAPH.json` as normal
+4. Regenerate STATE.md (D-34) after writing the new slice file
+
+### Legacy Fallback
+
+If format is legacy: update STATE.md as before. Legacy format behaviour is completely unchanged — no change.
+
+### Error Handling
+
+| Error State | When | Behaviour |
+|-------------|------|-----------|
+| FormatDetectionFailure | Cannot determine state format | Report error. Suggest running /gl:init |
+| SliceFileNotFound | Slice file does not exist when expected | Report error. Slice file must be created |
+| RegenerationFailure | STATE.md regeneration fails | Warn but continue. Slice file and GRAPH.json are still correct |
+
+### Crash Safety (NFR-4)
+
+All state writes use write-to-temp-then-rename (atomic writes) to prevent corruption:
+
+- Slice file creation: write to temp file, then rename to target path (atomic)
+- STATE.md regeneration: write to temp file, then rename to STATE.md (atomic)
+
+### Invariants
+
+- Slice ID is validated before file path construction to prevent path traversal
+- New slice file is created in `.greenlight/slices/{id}.md`
+- STATE.md is regenerated after every state write (D-34)
+- Legacy format behaviour is completely unchanged
+- Crash safety via write-to-temp-then-rename on all writes (NFR-4)

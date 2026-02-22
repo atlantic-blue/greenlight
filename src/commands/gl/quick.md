@@ -143,3 +143,52 @@ If a decision was made during the quick task:
 3. Source format: `quick:{timestamp}`
 
 Decision append is non-blocking. If it fails, log warning and continue.
+
+---
+
+## File-Per-Slice State Integration (C-84)
+
+This section documents how /gl:quick adapts its state writes when the project uses file-per-slice format (C-80). Legacy format behaviour is completely unchanged — if the state format is legacy, all writes go to STATE.md as before.
+
+### State Format Detection
+
+Detect state format (C-80) before performing any state reads or writes:
+
+- If file-per-slice: update test counts in only the relevant slice file from `.greenlight/slices/`, regenerate STATE.md (D-34)
+- If legacy: update STATE.md as before (no change)
+
+### File-Per-Slice Write Path
+
+When using file-per-slice format:
+
+1. Identify the relevant slice file at `.greenlight/slices/{id}.md`
+2. Update test counts in only the relevant slice file — not all files, only the specific slice being updated
+3. Regenerate STATE.md (D-34) after writing to the slice file
+
+Only the relevant slice file is updated. /gl:quick does not touch other slice files.
+
+### Legacy Fallback
+
+If format is legacy: update STATE.md as before. Legacy format behaviour is completely unchanged — no change.
+
+### Error Handling
+
+| Error State | When | Behaviour |
+|-------------|------|-----------|
+| FormatDetectionFailure | Cannot determine state format | Report error. Suggest running /gl:init |
+| SliceFileNotFound | Target slice file does not exist in `.greenlight/slices/` | Report error. Cannot update test counts without slice file |
+| RegenerationFailure | STATE.md regeneration fails | Warn but continue. Slice file is still correct |
+
+### Crash Safety (NFR-4)
+
+All state writes use write-to-temp-then-rename (atomic writes) to prevent corruption:
+
+- Slice file writes: write to temp file, then rename to target path (atomic)
+- STATE.md regeneration: write to temp file, then rename to STATE.md (atomic)
+
+### Invariants
+
+- Only the relevant slice file is updated (not all slice files)
+- STATE.md is regenerated after every state write (D-34)
+- Legacy format behaviour is completely unchanged
+- Crash safety via write-to-temp-then-rename on all writes (NFR-4)
