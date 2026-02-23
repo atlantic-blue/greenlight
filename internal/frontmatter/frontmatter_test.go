@@ -30,7 +30,7 @@ func TestParse_SingleKeyValue(t *testing.T) {
 func TestParse_MultipleKeyValuePairs(t *testing.T) {
 	content := "---\nid: S-35\nname: Frontmatter Parser\nstatus: complete\n---\n"
 
-	fields, body, err := frontmatter.Parse(content)
+	fields, _, err := frontmatter.Parse(content)
 
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
