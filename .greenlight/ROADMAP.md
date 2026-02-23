@@ -160,7 +160,7 @@ graph TD
 |-------|-------------|--------|-------|-----------|--------------|
 | S-35 | Frontmatter parser (internal/frontmatter) | complete | 22 | 2026-02-23 | Flat key-value line parser, stdlib only |
 | - | State reader (internal/state) | pending | - | - | Read slices/*.md + GRAPH.json, compute ready/blocked |
-| - | CLI dispatch refactoring | pending | - | - | Add new subcommand cases to cli.Run() |
+| S-37 | CLI dispatch extension | complete | 12 | 2026-02-23 | Stub handlers, categorized usage, no contentFS for new commands |
 | - | gl status command | pending | - | - | Read all slice files, progress display |
 | - | gl help command | pending | - | - | Context-aware help with project state detection |
 | - | gl roadmap command | pending | - | - | Read and display ROADMAP.md |

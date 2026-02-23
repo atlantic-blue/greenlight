@@ -41,6 +41,32 @@
 | C-73 | CheckpointProtocolAcceptanceType | checkpoint-protocol.md -> Acceptance checkpoint type | S-26 |
 | C-74 | ManifestVerificationTiersUpdate | Go CLI -> Manifest (1 new file path) | S-26 |
 | C-75 | ArchitectTierGuidance | gl-architect.md -> Tier selection guidance and acceptance criteria generation | S-27 |
+| C-91 | FrontmatterParse | Frontmatter parser -> Slice state files (parse flat YAML frontmatter) | S-35 |
+| C-92 | FrontmatterWrite | Frontmatter writer -> Slice state files (write flat YAML frontmatter) | S-35 |
+| C-93 | StateReadSlices | State reader -> Filesystem (read all slice frontmatter into structs) | S-36 |
+| C-94 | StateReadGraph | State reader -> Filesystem (read GRAPH.json dependency data) | S-36 |
+| C-95 | StateFindReadySlices | State reader -> Ready slice computation (pending + deps complete) | S-36 |
+| C-96 | StateDetectContext | State reader -> Environment (detect shell vs Claude context) | S-36 |
+| C-97 | CLIDispatchExtension | User -> CLI dispatcher (new subcommands) | S-37 |
+| C-98 | RunStatus | CLI -> Command handler (status with progress display) | S-38 |
+| C-99 | RunStatusCompact | CLI -> Command handler (compact one-liner for tmux status bar) | S-38 |
+| C-100 | RunHelp | CLI -> Command handler (context-aware help listing) | S-39 |
+| C-101 | RunRoadmap | CLI -> Command handler (display ROADMAP.md) | S-40 |
+| C-102 | RunChangelog | CLI -> Command handler (display changelog from summaries) | S-40 |
+| C-103 | ProcessSpawnClaude | Process spawner -> os/exec (spawn Claude with configurable flags) | S-41 |
+| C-104 | ProcessSpawnInteractive | Process spawner -> os/exec (launch interactive Claude session) | S-41 |
+| C-105 | RunSliceSingle | CLI -> Command handler (run single slice headlessly) | S-42 |
+| C-106 | RunSliceAutoDetect | CLI -> Command handler (auto-detect ready slices, run one) | S-42 |
+| C-107 | TmuxIsAvailable | tmux manager -> os/exec (check tmux availability) | S-43 |
+| C-108 | TmuxNewSession | tmux manager -> os/exec (create named tmux session) | S-43 |
+| C-109 | TmuxAddWindow | tmux manager -> os/exec (add window to existing session) | S-43 |
+| C-110 | TmuxAttachSession | tmux manager -> os/exec (attach to existing session) | S-43 |
+| C-111 | RunSliceParallel | CLI -> Command handler (parallel slice execution via tmux) | S-44 |
+| C-112 | RunSliceSequentialFallback | CLI -> Command handler (sequential fallback when no tmux) | S-44 |
+| C-113 | RunSliceWatch | CLI -> Command handler (watch mode poll loop) | S-45 |
+| C-114 | RunSliceDryRun | CLI -> Command handler (preview mode without execution) | S-45 |
+| C-115 | RunInit | CLI -> Command handler (launch interactive init session) | S-46 |
+| C-116 | RunDesign | CLI -> Command handler (launch interactive design session) | S-46 |
 
 ---
 
@@ -5811,6 +5837,1446 @@ Dependencies: C-77 (state format reference must be defined)
 
 ---
 
+---
+
+## Milestone: CLI Orchestrator
+
+> **Scope:** Extend the Go CLI binary into a full orchestrator with parallel execution
+> **Stack:** Go 1.24, stdlib only
+> **Date:** 2026-02-23
+> **Slices:** S-35 through S-46
+> **Contracts:** C-91 through C-116
+
+---
+
+## S-35: Frontmatter Parser
+
+*User Actions:*
+- *Supports all user actions (foundation for reading slice state files from Go)*
+
+### C-91: FrontmatterParse
+
+```go
+// Contract: FrontmatterParse
+// Boundary: Frontmatter parser -> Slice state files (parse flat YAML frontmatter)
+// Slice: S-35 (Frontmatter Parser)
+// Design refs: FR-9, D-43, DESIGN.md 4.2
+//
+// FILE: internal/frontmatter/frontmatter.go
+//
+// Package frontmatter provides a simple key-value parser for flat YAML
+// frontmatter delimited by "---" lines. No nesting. No arrays. No YAML
+// library. Line-by-line string splitting only (D-43).
+//
+// Signature:
+//   func Parse(content string) (map[string]string, string, error)
+//
+// Input:
+//   content string  // full file content including "---" delimiters
+//
+// Output:
+//   fields  map[string]string  // key-value pairs from frontmatter
+//   body    string             // everything after the closing "---"
+//   err     error              // nil on success
+//
+// Behaviour:
+//   1. Find opening "---" (must be first non-empty line)
+//   2. Find closing "---"
+//   3. Between delimiters, split each line on first ":"
+//   4. Trim whitespace from keys and values
+//   5. Return map of key-value pairs and remaining body
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrNoFrontmatter | Content has no opening "---" delimiter |
+//   | ErrUnclosedFrontmatter | Opening "---" found but no closing "---" |
+//   | ErrInvalidLine | Line between delimiters has no ":" separator |
+//
+// Invariants:
+//   - Empty values are valid (key with no value after colon)
+//   - Keys are trimmed of whitespace
+//   - Values are trimmed of whitespace
+//   - Body preserves original formatting (no trimming)
+//   - Empty content returns ErrNoFrontmatter
+//   - Content with only "---\n---" returns empty map and empty body
+//   - Values containing ":" are preserved (split on first ":" only)
+//   - Lines containing only whitespace between delimiters are skipped
+//
+// Verification: auto
+// Dependencies: none
+```
+
+### C-92: FrontmatterWrite
+
+```go
+// Contract: FrontmatterWrite
+// Boundary: Frontmatter writer -> Slice state files (write flat YAML frontmatter)
+// Slice: S-35 (Frontmatter Parser)
+// Design refs: FR-9, D-43, DESIGN.md 4.2
+//
+// FILE: internal/frontmatter/frontmatter.go
+//
+// Signature:
+//   func Write(fields map[string]string, body string) string
+//
+// Input:
+//   fields  map[string]string  // key-value pairs for frontmatter
+//   body    string             // content after the closing "---"
+//
+// Output:
+//   content string  // complete file content with frontmatter + body
+//
+// Behaviour:
+//   1. Write opening "---\n"
+//   2. Write each key-value pair as "key: value\n" in sorted key order
+//   3. Write closing "---\n"
+//   4. Append body
+//
+// Errors: none (pure function, always succeeds)
+//
+// Invariants:
+//   - Keys are written in sorted (alphabetical) order for deterministic output
+//   - Output of Write can be parsed back by Parse (roundtrip)
+//   - Empty fields map produces "---\n---\n" + body
+//   - Empty body produces frontmatter with no trailing content
+//   - No trailing newline is added to body (preserves original)
+//
+// Verification: auto
+// Dependencies: none
+```
+
+---
+
+## S-36: State Reader
+
+*User Actions:*
+- *1. User can see project status from the terminal without Claude (gl status)*
+- *Supports all user actions that need slice state or dependency data*
+
+### C-93: StateReadSlices
+
+```go
+// Contract: StateReadSlices
+// Boundary: State reader -> Filesystem (read all slice frontmatter into structs)
+// Slice: S-36 (State Reader)
+// Design refs: FR-10, DESIGN.md 4.4
+//
+// FILE: internal/state/state.go
+//
+// Signature:
+//   func ReadSlices(dir string) ([]SliceInfo, error)
+//
+// Types:
+//   type SliceInfo struct {
+//       ID           string   // e.g. "S-35"
+//       Status       string   // "pending", "in_progress", "complete", "failed"
+//       Step         string   // current step within the slice
+//       Milestone    string   // milestone name
+//       Started      string   // ISO date
+//       Updated      string   // ISO datetime
+//       Tests        int      // test count
+//       SecurityTests int     // security test count
+//       Session      string   // advisory session ID
+//       Deps         []string // dependency slice IDs
+//   }
+//
+// Input:
+//   dir string  // path to .greenlight/slices/ directory
+//
+// Output:
+//   slices []SliceInfo  // parsed slice info, sorted by ID
+//   err    error        // nil on success
+//
+// Behaviour:
+//   1. Read all .md files from dir
+//   2. Parse frontmatter from each file using frontmatter.Parse
+//   3. Convert frontmatter fields to SliceInfo struct
+//   4. Sort by ID (ascending)
+//   5. Return slice list
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrDirNotFound | Provided directory does not exist |
+//   | ErrNoSliceFiles | Directory exists but contains no .md files |
+//   | ErrParseFailure | A slice file has invalid frontmatter (includes filename in error) |
+//
+// Invariants:
+//   - Returned slices are always sorted by ID ascending
+//   - Tests and SecurityTests default to 0 if missing or non-numeric
+//   - Deps field is split on "," with whitespace trimmed; empty string yields empty slice
+//   - Invalid files are reported individually (not batch failure)
+//   - Status values outside the known set are preserved as-is (no validation)
+//
+// Verification: auto
+// Dependencies: C-91 (FrontmatterParse)
+```
+
+### C-94: StateReadGraph
+
+```go
+// Contract: StateReadGraph
+// Boundary: State reader -> Filesystem (read GRAPH.json dependency data)
+// Slice: S-36 (State Reader)
+// Design refs: FR-10, DESIGN.md 4.4
+//
+// FILE: internal/state/state.go
+//
+// Signature:
+//   func ReadGraph(path string) (*Graph, error)
+//
+// Types:
+//   type Graph struct {
+//       Slices map[string]GraphSlice  // keyed by slice ID
+//       Edges  []Edge                 // dependency edges
+//   }
+//
+//   type GraphSlice struct {
+//       ID          string   // e.g. "S-35"
+//       Name        string   // human-readable name
+//       DependsOn   []string // slice IDs this depends on
+//       Wave        int      // wave assignment
+//       Contracts   []string // contract IDs
+//   }
+//
+//   type Edge struct {
+//       From   string // dependent slice
+//       To     string // dependency slice
+//       Reason string // why the dependency exists
+//   }
+//
+// Input:
+//   path string  // path to .greenlight/GRAPH.json
+//
+// Output:
+//   graph *Graph  // parsed graph data
+//   err   error   // nil on success
+//
+// Behaviour:
+//   1. Read file at path
+//   2. Parse JSON into Graph struct
+//   3. Return parsed graph
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrFileNotFound | GRAPH.json does not exist at path |
+//   | ErrInvalidJSON | File content is not valid JSON |
+//   | ErrMissingSlices | JSON is valid but has no "slices" field |
+//
+// Invariants:
+//   - Graph always has at least a Slices map (possibly empty)
+//   - Missing optional fields default to zero values
+//   - Unknown JSON fields are ignored (forward compatibility)
+//   - File is read once per call (no caching)
+//
+// Verification: auto
+// Dependencies: none
+```
+
+### C-95: StateFindReadySlices
+
+```go
+// Contract: StateFindReadySlices
+// Boundary: State reader -> Ready slice computation (pending + deps complete)
+// Slice: S-36 (State Reader)
+// Design refs: FR-10, DESIGN.md 4.4
+//
+// FILE: internal/state/state.go
+//
+// Signature:
+//   func FindReadySlices(slices []SliceInfo, graph *Graph) []SliceInfo
+//
+// Input:
+//   slices []SliceInfo  // current slice states from ReadSlices
+//   graph  *Graph       // dependency graph from ReadGraph
+//
+// Output:
+//   ready []SliceInfo  // slices that are ready to build, sorted by wave then ID
+//
+// Behaviour:
+//   1. For each slice where status == "pending":
+//      a. Look up dependencies in graph
+//      b. Check all dependency slices have status == "complete"
+//      c. If all deps complete, include in ready list
+//   2. Sort by wave (ascending), then by ID (ascending) within wave
+//   3. Return ready list
+//
+// Errors: none (pure computation, always returns a result)
+//
+// Invariants:
+//   - A slice with no dependencies and status "pending" is always ready
+//   - A slice with status "in_progress", "complete", or "failed" is never ready
+//   - Ready slices are sorted by wave first, then by ID
+//   - If graph has no entry for a slice, it is treated as having no dependencies
+//   - Empty input returns empty output
+//   - Result is deterministic for the same input
+//
+// Verification: auto
+// Dependencies: C-93 (StateReadSlices), C-94 (StateReadGraph)
+```
+
+### C-96: StateDetectContext
+
+```go
+// Contract: StateDetectContext
+// Boundary: State reader -> Environment (detect shell vs Claude context)
+// Slice: S-36 (State Reader)
+// Design refs: FR-3, D-44, DESIGN.md 4.10
+//
+// FILE: internal/state/state.go
+//
+// Signature:
+//   func DetectContext() ExecutionContext
+//
+// Types:
+//   type ExecutionContext struct {
+//       InsideClaude bool   // true if $CLAUDE_CODE env var is set
+//       ClaudeValue  string // value of $CLAUDE_CODE (empty if not set)
+//   }
+//
+// Input: none (reads from environment)
+//
+// Output:
+//   ctx ExecutionContext  // execution context information
+//
+// Behaviour:
+//   1. Read $CLAUDE_CODE environment variable
+//   2. If set (any non-empty value): InsideClaude = true
+//   3. If unset or empty: InsideClaude = false
+//
+// Errors: none (environment read always succeeds)
+//
+// Invariants:
+//   - Detection is based solely on $CLAUDE_CODE env var (D-44)
+//   - Any non-empty value means "inside Claude"
+//   - Empty string and unset both mean "in shell"
+//   - Function is side-effect free (only reads environment)
+//
+// Verification: auto
+// Dependencies: none
+```
+
+---
+
+## S-37: CLI Dispatch Extension
+
+*User Actions:*
+- *7. User can get help with context-aware command listing (gl help)*
+- *Supports all new CLI commands (dispatch routing)*
+
+### C-97: CLIDispatchExtension
+
+```go
+// Contract: CLIDispatchExtension
+// Boundary: User -> CLI dispatcher (new subcommands added to Run switch)
+// Slice: S-37 (CLI Dispatch Extension)
+// Design refs: FR-1, D-46, DESIGN.md 4.1
+//
+// FILE: internal/cli/cli.go
+//
+// Change: Extend the existing Run() switch statement with new cases.
+//         Update printUsage() with new command listing.
+//
+// Existing switch cases (unchanged):
+//   "install"   -> cmd.RunInstall
+//   "uninstall" -> cmd.RunUninstall
+//   "check"     -> cmd.RunCheck
+//   "version"   -> cmd.RunVersion
+//   "help"      -> printUsage
+//
+// New switch cases:
+//   "status"    -> cmd.RunStatus(args[1:], stdout)
+//   "slice"     -> cmd.RunSlice(args[1:], stdout)
+//   "init"      -> cmd.RunInit(args[1:], stdout)
+//   "design"    -> cmd.RunDesign(args[1:], stdout)
+//   "roadmap"   -> cmd.RunRoadmap(args[1:], stdout)
+//   "changelog" -> cmd.RunChangelog(args[1:], stdout)
+//
+// Updated printUsage includes all commands grouped by category:
+//   Project lifecycle: init, design, roadmap
+//   Building: slice
+//   State & progress: status, changelog
+//   Admin: install, uninstall, check, version, help
+//
+// Signature (unchanged):
+//   func Run(args []string, contentFS fs.FS, stdout io.Writer) int
+//
+// Input: unchanged
+// Output: unchanged (exit code int)
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | UnknownCommand | args[0] not in any switch case | prints error + usage, returns 1 |
+//
+// Invariants:
+//   - All existing commands continue to work identically (no regression)
+//   - New commands follow the same pattern: return cmd.RunXxx(args[1:], stdout)
+//   - printUsage() shows all commands grouped by category
+//   - help, --help, -h all print the updated usage
+//   - Unknown commands still print error message + usage + return 1
+//   - New command handlers receive args[1:] (subcommand args only)
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl` with no args shows updated help with all new commands grouped by category
+// - Running `gl unknowncmd` prints error message and updated usage
+// - All existing commands (install, check, uninstall, version) still work
+// - New commands (status, slice, init, design, roadmap, changelog) dispatch correctly
+//
+// Dependencies: none (dispatch only -- handlers are stubbed until their slices)
+```
+
+---
+
+## S-38: Status Command
+
+*User Actions:*
+- *1. User can see project status from the terminal without Claude (gl status)*
+
+### C-98: RunStatus
+
+```go
+// Contract: RunStatus
+// Boundary: CLI -> Command handler (status with progress display)
+// Slice: S-38 (Status Command)
+// Design refs: FR-7, FR-10, DESIGN.md 4.3, 7
+//
+// FILE: internal/cmd/status.go
+//
+// Signature:
+//   func RunStatus(args []string, stdout io.Writer) int
+//
+// Input:
+//   args   []string   // subcommand args (may contain --compact)
+//   stdout io.Writer  // output destination
+//
+// Output:
+//   exit code int  // 0 on success, 1 on error
+//
+// Printed output (default mode):
+//   Progress: [########..........] 18/36 slices
+//   Running:  S-28 (implementing), S-30 (testing)
+//   Ready:    S-35, S-36, S-37
+//   Blocked:  S-42 (needs S-36, S-41)
+//   Tests:    1,247 passing, 134 security
+//
+// Behaviour:
+//   1. Locate .greenlight/ directory (current dir or parent)
+//   2. Read all slice files via state.ReadSlices
+//   3. Read GRAPH.json via state.ReadGraph
+//   4. Compute ready slices via state.FindReadySlices
+//   5. Compute summary statistics:
+//      - Total slices, complete count, in_progress count
+//      - Ready slices (pending with all deps complete)
+//      - Blocked slices (pending with incomplete deps)
+//      - Total tests, total security tests
+//   6. Format and print to stdout
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | NoGreenlightDir | No .greenlight/ directory found | prints "Not a greenlight project. Run 'gl init' first.", returns 1 |
+//   | NoSliceFiles | .greenlight/slices/ has no .md files | prints "No slices found. Run 'gl init' to set up.", returns 1 |
+//   | GraphReadError | Cannot read GRAPH.json | prints status without dependency info, warns user |
+//
+// Invariants:
+//   - Status is computed fresh on every call (no caching)
+//   - Blocked slices show which dependencies are unmet
+//   - Output is human-readable (not JSON)
+//   - Progress bar uses ASCII characters only
+//   - Test counts are summed from all slice files
+//   - Zero-state (no slices) is handled gracefully
+//   - Runs without Claude process (local command)
+//
+// Security:
+//   - Read-only operation
+//   - No sensitive data displayed
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl status` displays progress bar, running/ready/blocked slices, and test counts
+// - Progress bar accurately reflects complete/total ratio
+// - Blocked slices show their unmet dependency IDs
+// - Running `gl status` outside a greenlight project prints an error message
+//
+// Steps:
+// - Run `gl status` in a project with mixed slice states
+// - Verify counts match the frontmatter in .greenlight/slices/*.md files
+//
+// Dependencies: C-93 (StateReadSlices), C-94 (StateReadGraph), C-95 (StateFindReadySlices)
+```
+
+### C-99: RunStatusCompact
+
+```go
+// Contract: RunStatusCompact
+// Boundary: CLI -> Command handler (compact one-liner for tmux status bar)
+// Slice: S-38 (Status Command)
+// Design refs: DESIGN.md 4.9
+//
+// FILE: internal/cmd/status.go
+//
+// Signature: handled by RunStatus when --compact flag is present
+//
+// Input:
+//   args contains "--compact"
+//
+// Output:
+//   Single line to stdout: "18/36 done | 4 running"
+//   exit code 0
+//
+// Behaviour:
+//   1. Same data read as RunStatus (slices + graph)
+//   2. Output single line: "{complete}/{total} done | {in_progress} running"
+//   3. No progress bar, no details, no newlines beyond the final one
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | DataReadError | Cannot read slice files | prints "? slices | ? running", returns 0 (status bar must not break) |
+//
+// Invariants:
+//   - Output is always a single line
+//   - On error, outputs placeholder rather than failing (tmux status bar resilience)
+//   - Format is exactly: "{N}/{M} done | {K} running"
+//   - No color codes or special characters (tmux compatible)
+//
+// Verification: auto
+// Dependencies: C-93 (StateReadSlices), C-98 (RunStatus shares data reading logic)
+```
+
+---
+
+## S-39: Help Command
+
+*User Actions:*
+- *7. User can get help with context-aware command listing (gl help)*
+
+### C-100: RunHelp
+
+```go
+// Contract: RunHelp
+// Boundary: CLI -> Command handler (context-aware help listing)
+// Slice: S-39 (Help Command)
+// Design refs: FR-7, DESIGN.md 4.1
+//
+// FILE: internal/cmd/help.go
+//
+// Signature:
+//   func RunHelp(args []string, stdout io.Writer) int
+//
+// Input:
+//   args   []string   // subcommand args (unused for now)
+//   stdout io.Writer  // output destination
+//
+// Output:
+//   exit code int  // always 0
+//
+// Printed output:
+//   All available commands with descriptions, grouped by category.
+//   If inside a greenlight project, appends current state summary.
+//
+// Behaviour:
+//   1. Print command listing grouped by category:
+//      - Project lifecycle: init, design, roadmap
+//      - Building: slice
+//      - State & progress: status, changelog
+//      - Admin: install, uninstall, check, version, help
+//   2. Detect if .greenlight/ directory exists
+//   3. If exists: read slice count, complete count, ready count
+//   4. Append state summary: "Current project: {N} slices, {K} complete, {R} ready"
+//   5. If not exists: append "Run 'gl init' to start a new project"
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | StateReadError | Cannot read slice state | Print help without state summary. Do not fail. |
+//
+// Invariants:
+//   - Help always returns 0 (never fails)
+//   - Command listing is always printed regardless of state read errors
+//   - State summary is best-effort (errors are silently ignored)
+//   - Context detection uses directory existence, not $CLAUDE_CODE
+//   - Runs without Claude process (local command)
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl help` displays all commands grouped by category
+// - Inside a greenlight project, help appends current project state summary
+// - Outside a greenlight project, help suggests running `gl init`
+//
+// Dependencies: C-93 (StateReadSlices, for state summary)
+```
+
+---
+
+## S-40: Roadmap and Changelog Commands
+
+*User Actions:*
+- *6. User can see roadmap and changelog from the terminal (gl roadmap, gl changelog)*
+
+### C-101: RunRoadmap
+
+```go
+// Contract: RunRoadmap
+// Boundary: CLI -> Command handler (display ROADMAP.md)
+// Slice: S-40 (Roadmap and Changelog Commands)
+// Design refs: FR-7, DESIGN.md 4.3
+//
+// FILE: internal/cmd/roadmap.go
+//
+// Signature:
+//   func RunRoadmap(args []string, stdout io.Writer) int
+//
+// Input:
+//   args   []string   // subcommand args (unused)
+//   stdout io.Writer  // output destination
+//
+// Output:
+//   exit code int  // 0 on success, 1 on error
+//
+// Behaviour:
+//   1. Locate .greenlight/ directory
+//   2. Read .greenlight/ROADMAP.md
+//   3. Print contents to stdout
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | NoGreenlightDir | No .greenlight/ directory | prints "Not a greenlight project.", returns 1 |
+//   | NoRoadmap | ROADMAP.md does not exist | prints "No roadmap found. Run 'gl design' first.", returns 1 |
+//   | ReadError | Cannot read file | prints error message, returns 1 |
+//
+// Invariants:
+//   - Read-only operation (no files modified)
+//   - Contents printed verbatim (no formatting transformation)
+//   - Runs without Claude process (local command)
+//   - Returns 0 only on successful read and print
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl roadmap` displays the contents of .greenlight/ROADMAP.md
+// - Running `gl roadmap` with no ROADMAP.md prints a helpful error
+//
+// Dependencies: none
+```
+
+### C-102: RunChangelog
+
+```go
+// Contract: RunChangelog
+// Boundary: CLI -> Command handler (display changelog from summaries)
+// Slice: S-40 (Roadmap and Changelog Commands)
+// Design refs: FR-7, DESIGN.md 4.3
+//
+// FILE: internal/cmd/changelog.go
+//
+// Signature:
+//   func RunChangelog(args []string, stdout io.Writer) int
+//
+// Input:
+//   args   []string   // subcommand args (unused)
+//   stdout io.Writer  // output destination
+//
+// Output:
+//   exit code int  // 0 on success, 1 on error
+//
+// Behaviour:
+//   1. Locate .greenlight/ directory
+//   2. Read all .md files from .greenlight/summaries/
+//   3. Sort by filename (chronological -- filenames use date prefix)
+//   4. Print each summary separated by "---"
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | NoGreenlightDir | No .greenlight/ directory | prints "Not a greenlight project.", returns 1 |
+//   | NoSummaries | summaries/ directory missing or empty | prints "No changelog entries yet.", returns 0 |
+//   | ReadError | Cannot read a summary file | skip file, warn, continue with remaining |
+//
+// Invariants:
+//   - Read-only operation (no files modified)
+//   - Summaries are sorted by filename ascending (oldest first)
+//   - Missing summaries directory is not an error (empty changelog)
+//   - Individual file read errors do not block other files
+//   - Runs without Claude process (local command)
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl changelog` displays all summary files in chronological order
+// - Running `gl changelog` with no summaries prints "No changelog entries yet."
+//
+// Dependencies: none
+```
+
+---
+
+## S-41: Process Spawner
+
+*User Actions:*
+- *Supports user actions 2-5 (any command that launches Claude)*
+
+### C-103: ProcessSpawnClaude
+
+```go
+// Contract: ProcessSpawnClaude
+// Boundary: Process spawner -> os/exec (spawn Claude with configurable flags)
+// Slice: S-41 (Process Spawner)
+// Design refs: FR-2, D-42, DESIGN.md 4.3, 4.4
+//
+// FILE: internal/process/process.go
+//
+// Signature:
+//   func SpawnClaude(opts SpawnOptions) (*exec.Cmd, error)
+//
+// Types:
+//   type SpawnOptions struct {
+//       Prompt       string   // prompt text for -p flag (headless mode)
+//       Flags        []string // additional CLI flags (e.g. --dangerously-skip-permissions)
+//       Dir          string   // working directory for the process
+//       Stdout       io.Writer // stdout destination
+//       Stderr       io.Writer // stderr destination
+//   }
+//
+// Input:
+//   opts SpawnOptions  // configuration for the Claude process
+//
+// Output:
+//   cmd *exec.Cmd  // the started process (caller manages lifecycle)
+//   err error      // nil if process started successfully
+//
+// Behaviour:
+//   1. Verify "claude" is in PATH
+//   2. Build command: claude -p "{prompt}" {flags...}
+//   3. Set working directory to opts.Dir
+//   4. Connect stdout and stderr
+//   5. Start the process (cmd.Start)
+//   6. Return the running command (caller calls cmd.Wait)
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrClaudeNotFound | "claude" binary not in PATH | "claude not found. Install Claude Code: https://claude.ai/code" |
+//   | ErrStartFailure | Process failed to start | wraps underlying os error |
+//   | ErrEmptyPrompt | Prompt is empty string | "prompt is required for headless mode" |
+//
+// Invariants:
+//   - Process is started but not waited on (caller manages lifecycle)
+//   - Prompt is required (non-empty) for headless mode
+//   - "claude" binary is verified before attempting to start
+//   - Flags are passed as-is (no validation by process package)
+//   - Dir defaults to current directory if empty
+//   - No environment variables are modified (inherits current env)
+//
+// Verification: auto
+// Dependencies: none
+```
+
+### C-104: ProcessSpawnInteractive
+
+```go
+// Contract: ProcessSpawnInteractive
+// Boundary: Process spawner -> os/exec (launch interactive Claude session)
+// Slice: S-41 (Process Spawner)
+// Design refs: FR-2, FR-8, D-42, DESIGN.md 4.3
+//
+// FILE: internal/process/process.go
+//
+// Signature:
+//   func SpawnInteractive(opts InteractiveOptions) error
+//
+// Types:
+//   type InteractiveOptions struct {
+//       Prompt   string   // initial prompt (optional, for skill loading)
+//       Flags    []string // additional CLI flags
+//       Dir      string   // working directory
+//   }
+//
+// Input:
+//   opts InteractiveOptions  // configuration for interactive session
+//
+// Output:
+//   err error  // nil if process completed successfully
+//
+// Behaviour:
+//   1. Verify "claude" is in PATH
+//   2. Build command: claude {flags...}
+//   3. If Prompt is non-empty: add -p "{prompt}" but NOT --dangerously-skip-permissions
+//   4. Connect stdin, stdout, stderr to os.Stdin/os.Stdout/os.Stderr
+//   5. Run the process (cmd.Run -- blocks until user exits Claude)
+//   6. Return the exit error (nil on clean exit)
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrClaudeNotFound | "claude" binary not in PATH | same message as SpawnClaude |
+//   | ErrProcessFailed | Process exited with non-zero code | wraps exec.ExitError |
+//
+// Invariants:
+//   - Interactive mode NEVER uses --dangerously-skip-permissions
+//   - stdin is connected to terminal (user can interact)
+//   - Prompt is optional (unlike headless mode)
+//   - Function blocks until Claude session ends
+//   - No environment variables are modified
+//
+// Verification: auto
+// Dependencies: none
+```
+
+---
+
+## S-42: Single Slice Command
+
+*User Actions:*
+- *2. User can run a single slice headlessly from the terminal (gl slice S-35)*
+
+### C-105: RunSliceSingle
+
+```go
+// Contract: RunSliceSingle
+// Boundary: CLI -> Command handler (run single slice headlessly)
+// Slice: S-42 (Single Slice Command)
+// Design refs: FR-2, FR-3, DESIGN.md 4.4, 4.5
+//
+// FILE: internal/cmd/slice.go
+//
+// Signature:
+//   func RunSlice(args []string, stdout io.Writer) int
+//
+// Input:
+//   args   []string   // e.g. ["S-35"] or ["S-35", "--dry-run"]
+//   stdout io.Writer  // output destination
+//
+// Output:
+//   exit code int  // 0 on success, non-zero on failure
+//
+// Behaviour (when slice ID is provided):
+//   1. Parse args for slice ID and flags (--dry-run, --max, --watch, --sequential)
+//   2. Detect context via state.DetectContext()
+//   3. Read config from .greenlight/config.json for claude_flags
+//   4. If --dry-run: print what would happen, return 0
+//   5. If inside Claude ($CLAUDE_CODE set):
+//      - Print slice info for Claude skill to consume
+//      - Return 0
+//   6. If in shell:
+//      - Spawn claude headlessly: claude -p "/gl:slice {id}" {claude_flags}
+//      - Wait for completion
+//      - Return claude's exit code
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | InvalidSliceID | Provided ID not found in GRAPH.json | "Unknown slice: {id}. Run 'gl status' to see available slices." |
+//   | ClaudeSpawnError | Failed to start Claude process | prints error from process.SpawnClaude |
+//   | NoGreenlightDir | No .greenlight/ directory | "Not a greenlight project." |
+//
+// Invariants:
+//   - Single slice mode always runs directly (no tmux)
+//   - Inside Claude context: outputs info, never spawns another Claude
+//   - claude_flags come from config.json parallel.claude_flags
+//   - Exit code reflects Claude process exit code
+//   - --dry-run never spawns a process
+//
+// Security:
+//   - claude_flags are read from project config, not user input
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl slice S-35` spawns a headless Claude session for that slice
+// - Running `gl slice S-35 --dry-run` prints what would happen without spawning
+// - Running `gl slice INVALID` prints an error with the unknown ID
+//
+// Steps:
+// - Run `gl slice S-35 --dry-run` and verify output shows the command that would execute
+//
+// Dependencies: C-96 (StateDetectContext), C-94 (StateReadGraph), C-103 (ProcessSpawnClaude)
+```
+
+### C-106: RunSliceAutoDetect
+
+```go
+// Contract: RunSliceAutoDetect
+// Boundary: CLI -> Command handler (auto-detect ready slices, run one)
+// Slice: S-42 (Single Slice Command)
+// Design refs: FR-2, FR-10, DESIGN.md 4.4
+//
+// FILE: internal/cmd/slice.go
+//
+// Signature: handled by RunSlice when no slice ID is provided
+//
+// Input:
+//   args contains no slice ID (e.g. [] or ["--dry-run"])
+//
+// Output:
+//   exit code int  // 0 on success, 1 on error
+//
+// Behaviour (when no slice ID):
+//   1. Read slice states and graph
+//   2. Find ready slices via state.FindReadySlices
+//   3. If 0 ready:
+//      - Print blocked status: which slices are blocked and why
+//      - Return 0
+//   4. If 1 ready:
+//      - Run that slice directly (same as providing ID)
+//   5. If 2+ ready and single-slice context (inside Claude or --sequential):
+//      - Pick first ready slice by wave/ID order
+//      - Run it
+//      - Print hint: "{N} more slices ready. Run 'gl slice --max {N}'"
+//   6. If 2+ ready and parallel possible:
+//      - Defer to parallel execution (C-111)
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | StateReadError | Cannot read slice state or graph | prints error, returns 1 |
+//
+// Invariants:
+//   - Auto-detect always picks by wave order, then ID order
+//   - Inside Claude: always runs exactly one slice, hints about the rest
+//   - Zero ready slices is not an error (returns 0 with information)
+//   - Blocked status shows which deps are unmet for each blocked slice
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl slice` with no args auto-detects and runs the first ready slice
+// - When no slices are ready, prints blocked status with unmet dependencies
+// - When multiple slices are ready, prints count and suggests parallel mode
+//
+// Dependencies: C-93 (StateReadSlices), C-94 (StateReadGraph), C-95 (StateFindReadySlices), C-105 (RunSliceSingle)
+```
+
+---
+
+## S-43: tmux Manager
+
+*User Actions:*
+- *3. User can run multiple slices in parallel via tmux (gl slice --max 4)*
+
+### C-107: TmuxIsAvailable
+
+```go
+// Contract: TmuxIsAvailable
+// Boundary: tmux manager -> os/exec (check tmux availability)
+// Slice: S-43 (tmux Manager)
+// Design refs: D-41, DESIGN.md 4.7
+//
+// FILE: internal/tmux/tmux.go
+//
+// Signature:
+//   func IsAvailable() bool
+//
+// Input: none
+//
+// Output:
+//   available bool  // true if tmux is installed and executable
+//
+// Behaviour:
+//   1. Run exec.LookPath("tmux")
+//   2. Return true if found, false otherwise
+//
+// Errors: none (returns false on any error)
+//
+// Invariants:
+//   - Never returns an error (boolean only)
+//   - Checks PATH lookup, does not verify tmux version
+//   - Does not start a tmux process
+//   - Result may change between calls (if tmux installed/uninstalled)
+//
+// Verification: auto
+// Dependencies: none
+```
+
+### C-108: TmuxNewSession
+
+```go
+// Contract: TmuxNewSession
+// Boundary: tmux manager -> os/exec (create named tmux session)
+// Slice: S-43 (tmux Manager)
+// Design refs: D-41, DESIGN.md 4.8
+//
+// FILE: internal/tmux/tmux.go
+//
+// Signature:
+//   func NewSession(opts SessionOptions) error
+//
+// Types:
+//   type SessionOptions struct {
+//       Name    string // session name (e.g. "gl-greenlight")
+//       Dir     string // working directory for the session
+//       Command string // initial command to run in first window
+//       Window  string // name for the first window
+//   }
+//
+// Input:
+//   opts SessionOptions  // session configuration
+//
+// Output:
+//   err error  // nil if session created successfully
+//
+// Behaviour:
+//   1. Run: tmux new-session -d -s {name} -n {window} -c {dir} {command}
+//   2. -d flag creates session detached (does not attach immediately)
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrSessionExists | Session with this name already exists | "tmux session '{name}' already exists" |
+//   | ErrTmuxNotFound | tmux not in PATH | "tmux not found" |
+//   | ErrCreateFailed | tmux command failed | wraps underlying error |
+//
+// Invariants:
+//   - Session is created detached (caller attaches separately)
+//   - Session name must be non-empty
+//   - Command runs in the first window of the session
+//   - Working directory is set for the session (inherited by windows)
+//
+// Verification: auto
+// Dependencies: C-107 (TmuxIsAvailable)
+```
+
+### C-109: TmuxAddWindow
+
+```go
+// Contract: TmuxAddWindow
+// Boundary: tmux manager -> os/exec (add window to existing session)
+// Slice: S-43 (tmux Manager)
+// Design refs: D-41, DESIGN.md 4.8
+//
+// FILE: internal/tmux/tmux.go
+//
+// Signature:
+//   func AddWindow(session string, name string, command string) error
+//
+// Input:
+//   session string  // existing session name
+//   name    string  // window name (e.g. "S-35")
+//   command string  // command to run in the new window
+//
+// Output:
+//   err error  // nil if window added successfully
+//
+// Behaviour:
+//   1. Run: tmux new-window -t {session} -n {name} {command}
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrSessionNotFound | Target session does not exist | "tmux session '{session}' not found" |
+//   | ErrAddWindowFailed | tmux command failed | wraps underlying error |
+//
+// Invariants:
+//   - Window is added to an existing session (session must exist)
+//   - Window name is set for identification
+//   - Command starts immediately in the new window
+//
+// Verification: auto
+// Dependencies: C-108 (TmuxNewSession must exist to add windows to)
+```
+
+### C-110: TmuxAttachSession
+
+```go
+// Contract: TmuxAttachSession
+// Boundary: tmux manager -> os/exec (attach to existing session)
+// Slice: S-43 (tmux Manager)
+// Design refs: D-41, DESIGN.md 4.8
+//
+// FILE: internal/tmux/tmux.go
+//
+// Signature:
+//   func AttachSession(session string) error
+//
+// Input:
+//   session string  // session name to attach to
+//
+// Output:
+//   err error  // nil if attached and then detached cleanly
+//
+// Behaviour:
+//   1. Run: tmux attach-session -t {session}
+//   2. Blocks until user detaches or session ends
+//   3. Connects stdin/stdout/stderr to terminal
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ErrSessionNotFound | Target session does not exist | "tmux session '{session}' not found" |
+//   | ErrAttachFailed | tmux command failed | wraps underlying error |
+//
+// Invariants:
+//   - Function blocks until user detaches (Ctrl-B D) or session terminates
+//   - stdin is connected to terminal (user can interact with tmux)
+//   - Attaching to an already-attached session is valid (tmux handles it)
+//
+// Verification: auto
+// Dependencies: C-108 (TmuxNewSession must create the session first)
+```
+
+---
+
+## S-44: Parallel Slice Execution
+
+*User Actions:*
+- *3. User can run multiple slices in parallel via tmux (gl slice --max 4)*
+
+### C-111: RunSliceParallel
+
+```go
+// Contract: RunSliceParallel
+// Boundary: CLI -> Command handler (parallel slice execution via tmux)
+// Slice: S-44 (Parallel Slice Execution)
+// Design refs: FR-4, D-41, DESIGN.md 4.4, 4.8
+//
+// FILE: internal/cmd/slice.go
+//
+// Signature: handled by RunSlice when 2+ slices ready and tmux available
+//
+// Input:
+//   ready  []SliceInfo  // 2+ ready slices
+//   max    int          // from --max flag (default 4)
+//
+// Output:
+//   exit code int  // 0 on success, 1 on error
+//
+// Behaviour:
+//   1. Read config for parallel settings (claude_flags, tmux_session_prefix)
+//   2. Create tmux session named "{prefix}-{project}" (e.g. "gl-greenlight")
+//      - First window runs first ready slice
+//   3. Add windows for remaining ready slices (up to --max)
+//      - Each window runs: claude -p "/gl:slice {id}" {claude_flags}
+//   4. Set tmux layout to tiled
+//   5. Attach to session (blocks until user detaches)
+//   6. Return 0
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | TmuxSessionCreateError | Cannot create tmux session | prints error, falls back to sequential |
+//   | TmuxWindowError | Cannot add window | skip that slice, continue with others |
+//   | ConfigReadError | Cannot read config.json | use defaults (max=4, standard flags) |
+//
+// Invariants:
+//   - Never exceeds --max windows
+//   - Session name follows "{prefix}-{project}" pattern from config
+//   - Falls back to sequential mode on tmux errors (not a fatal error)
+//   - Each window is named with the slice ID (e.g. "S-35")
+//   - Slices are assigned to windows in wave/ID order
+//   - tmux tiled layout is applied after all windows are added
+//
+// Security:
+//   - claude_flags from config only (not from user args)
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl slice --max 4` with 5 ready slices creates a tmux session with 4 windows
+// - Each tmux window runs a headless Claude session for one slice
+// - Session name follows the configured prefix pattern
+// - If tmux is unavailable, falls back to sequential execution with a hint
+//
+// Steps:
+// - Run `gl slice --max 2 --dry-run` and verify it shows 2 slices would be launched in tmux
+//
+// Dependencies: C-95 (StateFindReadySlices), C-103 (ProcessSpawnClaude), C-108 (TmuxNewSession), C-109 (TmuxAddWindow), C-110 (TmuxAttachSession)
+```
+
+### C-112: RunSliceSequentialFallback
+
+```go
+// Contract: RunSliceSequentialFallback
+// Boundary: CLI -> Command handler (sequential fallback when no tmux)
+// Slice: S-44 (Parallel Slice Execution)
+// Design refs: FR-6, DESIGN.md 4.7
+//
+// FILE: internal/cmd/slice.go
+//
+// Signature: handled by RunSlice when 2+ slices ready but no tmux or --sequential
+//
+// Input:
+//   ready []SliceInfo  // 2+ ready slices
+//
+// Output:
+//   exit code int  // 0 if all succeeded, 1 if any failed
+//
+// Behaviour:
+//   1. Print: "tmux not available, running sequentially"
+//      (or "sequential mode" if --sequential flag)
+//   2. Pick first ready slice by wave/ID order
+//   3. Run it via SpawnClaude (blocks until complete)
+//   4. Re-read slice states (state may have changed)
+//   5. Find new ready slices
+//   6. If more ready: run next one
+//   7. Repeat until no more ready slices
+//   8. Print summary at end
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | SliceFailure | A slice exits non-zero | log failure, continue with next ready slice |
+//   | StateReadError | Cannot re-read state after completion | stop sequential loop, report error |
+//
+// Invariants:
+//   - State is re-read after every slice completion (picks up new ready slices)
+//   - Failed slices do not block subsequent slices (unless they are dependencies)
+//   - Sequential mode processes one slice at a time
+//   - Summary shows how many completed, how many failed, how many remaining
+//   - --sequential flag forces this path even when tmux is available
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl slice --sequential` with 3 ready slices runs them one at a time
+// - After each slice completes, state is re-read and next ready slice is picked
+// - A failing slice does not prevent other independent slices from running
+//
+// Dependencies: C-95 (StateFindReadySlices), C-103 (ProcessSpawnClaude), C-105 (RunSliceSingle)
+```
+
+---
+
+## S-45: Watch Mode
+
+*User Actions:*
+- *4. User can fire-and-forget to drain the dependency graph (gl slice --watch)*
+
+### C-113: RunSliceWatch
+
+```go
+// Contract: RunSliceWatch
+// Boundary: CLI -> Command handler (watch mode poll loop)
+// Slice: S-45 (Watch Mode)
+// Design refs: FR-5, D-45, DESIGN.md 4.6
+//
+// FILE: internal/cmd/slice.go
+//
+// Signature: handled by RunSlice when --watch flag is present
+//
+// Input:
+//   args contains "--watch"
+//   max int          // from --max flag (default 4)
+//   interval int     // from config parallel.watch_interval_seconds (default 30)
+//
+// Output:
+//   exit code int  // 0 when all done or all blocked, 1 on fatal error
+//
+// Behaviour:
+//   1. Initial launch: find ready slices, launch up to --max via tmux (or sequential)
+//   2. Enter poll loop:
+//      a. Sleep for watch_interval_seconds
+//      b. Re-read all slice states
+//      c. Detect completed slices since last poll:
+//         - Log: "S-{id} complete ({N} tests)"
+//      d. Count running (in_progress) and ready (pending + deps complete)
+//      e. Calculate available slots: max - running
+//      f. For each available slot (up to ready count):
+//         - Launch new tmux window or sequential process
+//         - Log: "launched S-{id} ({name})"
+//      g. If no running AND no ready:
+//         - Print summary: total done, total tests, remaining blocked
+//         - Exit loop, return 0
+//   3. Handle SIGINT/SIGTERM: print summary and exit cleanly
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | StateReadError | Cannot read state during poll | log warning, retry next interval |
+//   | LaunchError | Cannot spawn new slice process | log error, skip slot, try next interval |
+//
+// Invariants:
+//   - Poll interval is configurable via config (D-45, default 30s)
+//   - Watch mode auto-terminates when no in_progress and no ready slices remain
+//   - Completed slices are logged with test counts
+//   - Slot refilling respects --max cap
+//   - SIGINT triggers clean shutdown (not abrupt kill)
+//   - State read errors in poll loop are recoverable (retry next interval)
+//   - Watch mode works with both tmux and sequential modes
+//
+// Security:
+//   - No external network access
+//   - Poll reads only local files
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl slice --watch` drains the dependency graph by auto-launching new slices
+// - Completed slices are logged with test counts as they finish
+// - Watch mode terminates when all slices are done or blocked
+// - New slices are launched as slots become available
+//
+// Steps:
+// - Run `gl slice --watch --dry-run` to verify poll behaviour description
+// - Run `gl slice --watch --max 2` on a project with 4 independent slices
+// - Observe that at most 2 run simultaneously, and new ones launch as slots free
+//
+// Dependencies: C-95 (StateFindReadySlices), C-111 (RunSliceParallel), C-112 (RunSliceSequentialFallback)
+```
+
+### C-114: RunSliceDryRun
+
+```go
+// Contract: RunSliceDryRun
+// Boundary: CLI -> Command handler (preview mode without execution)
+// Slice: S-45 (Watch Mode)
+// Design refs: DESIGN.md 7
+//
+// FILE: internal/cmd/slice.go
+//
+// Signature: handled by RunSlice when --dry-run flag is present
+//
+// Input:
+//   args contains "--dry-run"
+//
+// Output:
+//   exit code 0 (always succeeds)
+//
+// Printed output:
+//   Ready ({N}):   S-35, S-36, S-43
+//   Running ({K}): S-28 (implementing)
+//   Blocked ({M}): S-42 (needs S-36, S-41), S-44 (needs S-42, S-43)
+//   Would launch:  S-35, S-36, S-43 (up to --max)
+//
+// Behaviour:
+//   1. Read slice states and graph
+//   2. Categorize slices: ready, running, blocked
+//   3. Print summary of what would happen
+//   4. Do NOT spawn any processes
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | StateReadError | Cannot read state | prints error, returns 1 |
+//
+// Invariants:
+//   - Never spawns a process or modifies any state
+//   - Shows blocked slices with their unmet dependency IDs
+//   - "Would launch" respects --max cap
+//   - Always returns 0 on successful preview
+//   - Works with all combinations of --watch, --max, --sequential
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl slice --dry-run` shows ready, running, blocked categories
+// - "Would launch" list respects the --max cap
+// - No processes are spawned in dry-run mode
+//
+// Dependencies: C-93 (StateReadSlices), C-94 (StateReadGraph), C-95 (StateFindReadySlices)
+```
+
+---
+
+## S-46: Interactive Commands
+
+*User Actions:*
+- *5. User can launch interactive Claude sessions (gl init, gl design)*
+
+### C-115: RunInit
+
+```go
+// Contract: RunInit
+// Boundary: CLI -> Command handler (launch interactive init session)
+// Slice: S-46 (Interactive Commands)
+// Design refs: FR-2, FR-8, DESIGN.md 4.3
+//
+// FILE: internal/cmd/init.go
+//
+// Signature:
+//   func RunInit(args []string, stdout io.Writer) int
+//
+// Input:
+//   args   []string   // subcommand args (unused)
+//   stdout io.Writer  // output destination
+//
+// Output:
+//   exit code int  // 0 on success, non-zero on error
+//
+// Behaviour:
+//   1. Detect context via state.DetectContext()
+//   2. If inside Claude:
+//      - Print instructions for the /gl:init skill
+//      - Return 0 (Claude will handle it)
+//   3. If in shell:
+//      - Print "Launching Greenlight init..."
+//      - Launch interactive Claude session with /gl:init prompt
+//      - Block until session ends
+//      - Return Claude's exit code
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | ClaudeNotFound | claude binary not in PATH | prints install instructions, returns 1 |
+//   | LaunchError | Failed to start interactive session | prints error, returns 1 |
+//
+// Invariants:
+//   - Interactive mode: NEVER uses --dangerously-skip-permissions
+//   - Inside Claude: prints info, never spawns another Claude
+//   - Blocks until user exits the interactive session
+//   - No state files are read (init creates them)
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl init` from the shell launches an interactive Claude session
+// - The session loads with the /gl:init skill prompt
+// - No --dangerously-skip-permissions flag is used
+//
+// Dependencies: C-96 (StateDetectContext), C-104 (ProcessSpawnInteractive)
+```
+
+### C-116: RunDesign
+
+```go
+// Contract: RunDesign
+// Boundary: CLI -> Command handler (launch interactive design session)
+// Slice: S-46 (Interactive Commands)
+// Design refs: FR-2, FR-8, DESIGN.md 4.3
+//
+// FILE: internal/cmd/design.go
+//
+// Signature:
+//   func RunDesign(args []string, stdout io.Writer) int
+//
+// Input:
+//   args   []string   // subcommand args (unused)
+//   stdout io.Writer  // output destination
+//
+// Output:
+//   exit code int  // 0 on success, non-zero on error
+//
+// Behaviour:
+//   1. Detect context via state.DetectContext()
+//   2. If inside Claude:
+//      - Print instructions for the /gl:design skill
+//      - Return 0
+//   3. If in shell:
+//      - Verify .greenlight/ directory exists (design requires existing project)
+//      - Print "Launching Greenlight design session..."
+//      - Launch interactive Claude session with /gl:design prompt
+//      - Block until session ends
+//      - Return Claude's exit code
+//
+// Errors:
+//   | Error | When |
+//   |-------|------|
+//   | NoGreenlightDir | No .greenlight/ directory | "Not a greenlight project. Run 'gl init' first.", returns 1 |
+//   | ClaudeNotFound | claude binary not in PATH | prints install instructions, returns 1 |
+//   | LaunchError | Failed to start interactive session | prints error, returns 1 |
+//
+// Invariants:
+//   - Interactive mode: NEVER uses --dangerously-skip-permissions
+//   - Requires existing .greenlight/ directory (unlike init)
+//   - Inside Claude: prints info, never spawns another Claude
+//   - Blocks until user exits the interactive session
+//
+// Verification: verify
+// Acceptance Criteria:
+// - Running `gl design` from the shell launches an interactive Claude session
+// - Running `gl design` outside a greenlight project prints an error
+// - The session loads with the /gl:design skill prompt
+//
+// Dependencies: C-96 (StateDetectContext), C-104 (ProcessSpawnInteractive)
+```
+
+---
+
 ## Updated User Action Mapping (Parallel State)
 
 | User Action | Slice(s) | Contracts | Enabled By |
@@ -5818,3 +7284,17 @@ Dependencies: C-77 (state format reference must be defined)
 | 1. Run multiple /gl:slice sessions in parallel without state corruption | S-28, S-29, S-30, S-31, S-33, S-34 | C-76, C-77, C-78, C-79, C-80, C-81, C-82, C-84, C-87, C-90 | Foundation docs + init + slice writes + supporting commands + CLAUDE.md rule + manifest |
 | 2. See accurate slice status across all concurrent sessions | S-28, S-29, S-31, S-33, S-34 | C-76, C-77, C-80, C-83, C-84, C-87, C-90 | Foundation docs + detection + status aggregation + supporting commands + CLAUDE.md rule + manifest |
 | 3. Migrate existing projects to the new state format | S-28, S-32, S-34 | C-76, C-77, C-85, C-86, C-90 | Foundation docs + migration command + backup safety + manifest |
+
+---
+
+## Updated User Action Mapping (CLI Orchestrator)
+
+| User Action | Slice(s) | Contracts | Enabled By |
+|-------------|----------|-----------|------------|
+| 1. User can see project status from the terminal without Claude (gl status) | S-35, S-36, S-37, S-38 | C-91, C-92, C-93, C-94, C-95, C-97, C-98, C-99 | Frontmatter + state + dispatch + status command |
+| 2. User can run a single slice headlessly from the terminal (gl slice S-35) | S-35, S-36, S-37, S-41, S-42 | C-91, C-93, C-94, C-95, C-96, C-97, C-103, C-105, C-106 | Frontmatter + state + dispatch + process + slice command |
+| 3. User can run multiple slices in parallel via tmux (gl slice --max 4) | S-35, S-36, S-37, S-41, S-42, S-43, S-44 | C-91, C-93, C-94, C-95, C-96, C-97, C-103, C-105, C-107, C-108, C-109, C-110, C-111, C-112 | All of UA-2 + tmux + parallel execution |
+| 4. User can fire-and-forget to drain the dependency graph (gl slice --watch) | S-35, S-36, S-37, S-41, S-42, S-43, S-44, S-45 | C-91, C-93, C-94, C-95, C-97, C-103, C-107, C-108, C-109, C-111, C-113, C-114 | All of UA-3 + watch mode |
+| 5. User can launch interactive Claude sessions (gl init, gl design) | S-36, S-37, S-41, S-46 | C-96, C-97, C-104, C-115, C-116 | State detection + dispatch + interactive process + init/design commands |
+| 6. User can see roadmap and changelog from the terminal (gl roadmap, gl changelog) | S-37, S-40 | C-97, C-101, C-102 | Dispatch + roadmap/changelog commands |
+| 7. User can get help with context-aware command listing (gl help) | S-36, S-37, S-39 | C-93, C-97, C-100 | State + dispatch + help command |
