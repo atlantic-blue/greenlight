@@ -161,7 +161,7 @@ graph TD
 | S-35 | Frontmatter parser (internal/frontmatter) | complete | 22 | 2026-02-23 | Flat key-value line parser, stdlib only |
 | S-36 | State reader (internal/state) | complete | 41 | 2026-02-23 | os.ReadDir + frontmatter.Parse, json.RawMessage for field detection |
 | S-37 | CLI dispatch extension | complete | 12 | 2026-02-23 | Stub handlers, categorized usage, no contentFS for new commands |
-| - | gl status command | pending | - | - | Read all slice files, progress display |
+| S-38 | gl status command | complete | 24 | 2026-02-23 | 20-char ASCII bar, graceful GRAPH.json degradation, --compact for tmux |
 | - | gl help command | pending | - | - | Context-aware help with project state detection |
 | - | gl roadmap command | pending | - | - | Read and display ROADMAP.md |
 | - | gl changelog command | pending | - | - | Read and display from summaries/*.md |
