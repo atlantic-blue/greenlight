@@ -159,7 +159,7 @@ graph TD
 | Slice | Description | Status | Tests | Completed | Key Decision |
 |-------|-------------|--------|-------|-----------|--------------|
 | S-35 | Frontmatter parser (internal/frontmatter) | complete | 22 | 2026-02-23 | Flat key-value line parser, stdlib only |
-| - | State reader (internal/state) | pending | - | - | Read slices/*.md + GRAPH.json, compute ready/blocked |
+| S-36 | State reader (internal/state) | complete | 41 | 2026-02-23 | os.ReadDir + frontmatter.Parse, json.RawMessage for field detection |
 | S-37 | CLI dispatch extension | complete | 12 | 2026-02-23 | Stub handlers, categorized usage, no contentFS for new commands |
 | - | gl status command | pending | - | - | Read all slice files, progress display |
 | - | gl help command | pending | - | - | Context-aware help with project state detection |
