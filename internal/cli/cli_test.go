@@ -257,7 +257,7 @@ func TestRun_UnknownCommand_ShowsCommandName(t *testing.T) {
 	}{
 		{"deploy", "deploy", "unknown command: deploy"},
 		{"upgrade", "upgrade", "unknown command: upgrade"},
-		{"init", "init", "unknown command: init"},
+		{"run", "run", "unknown command: run"},
 	}
 
 	for _, tc := range testCases {

@@ -26,6 +26,18 @@ func Run(args []string, contentFS fs.FS, stdout io.Writer) int {
 		return cmd.RunCheck(args[1:], contentFS, stdout)
 	case "version":
 		return cmd.RunVersion(stdout)
+	case "status":
+		return cmd.RunStatus(args[1:], stdout)
+	case "slice":
+		return cmd.RunSlice(args[1:], stdout)
+	case "init":
+		return cmd.RunInit(args[1:], stdout)
+	case "design":
+		return cmd.RunDesign(args[1:], stdout)
+	case "roadmap":
+		return cmd.RunRoadmap(args[1:], stdout)
+	case "changelog":
+		return cmd.RunChangelog(args[1:], stdout)
 	case "help", "--help", "-h":
 		printUsage(stdout)
 		return 0
@@ -43,7 +55,7 @@ func printUsage(w io.Writer) {
    ║	 ▗▄▄▖▗▄▄▖ ▗▄▄▄▖▗▄▄▄▖▗▖  ▗▖ ▗▖   ▗▄▄▄▖ ▗▄▄▖▗▖ ▗▖▗▄▄▄▖  ║
    ║	▐▌   ▐▌ ▐▌▐▌   ▐▌   ▐▛▚▖▐▌ ▐▌     █  ▐▌   ▐▌ ▐▌  █    ║
    ║	▐▌▝▜▌▐▛▀▚▖▐▛▀▀▘▐▛▀▀▘▐▌ ▝▜▌ ▐▌     █  ▐▌▝▜▌▐▛▀▜▌  █    ║
-   ║	▝▚▄▞▘▐▌ ▐▌▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌ ▐▙▄▄▖▗▄█▄▖▝▚▄▞▘▐▌ ▐▌  █    ║                                                
+   ║	▝▚▄▞▘▐▌ ▐▌▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌ ▐▙▄▄▖▗▄█▄▖▝▚▄▞▘▐▌ ▐▌  █    ║
    ║                                                          ║
    ╚══════════════════════════════════════════════════════════╝
                   Tests are the source of truth.
@@ -52,7 +64,19 @@ func printUsage(w io.Writer) {
 
 Usage: greenlight <command> [flags]
 
-Commands:
+Project lifecycle:
+  init        Initialise a new greenlight project
+  design      Run the design phase for a feature
+  roadmap     View or update the project roadmap
+
+Building:
+  slice       Run a vertical slice end-to-end
+
+State & progress:
+  status      Show current project status
+  changelog   View or generate the changelog
+
+Admin:
   install     Install greenlight files
   uninstall   Remove greenlight files
   check       Verify installation
