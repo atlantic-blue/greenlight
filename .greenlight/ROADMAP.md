@@ -164,7 +164,7 @@ graph TD
 | S-38 | gl status command | complete | 24 | 2026-02-23 | 20-char ASCII bar, graceful GRAPH.json degradation, --compact for tmux |
 | S-39 | Help Command | complete | 13 | 2026-02-23 | Best-effort state summary, directory detection |
 | S-40 | Roadmap and Changelog Commands | complete | 25 | 2026-02-23 | Verbatim roadmap, sorted changelog with --- separators |
-| - | Process spawner (internal/process) | pending | - | - | Claude process via os/exec with lifecycle management |
+| S-41 | Process Spawner | complete | 15 | 2026-02-23 | LookPath DI for testability, --dangerously-skip-permissions stripping |
 | - | tmux manager (internal/tmux) | pending | - | - | Session/pane management via os/exec |
 | - | gl slice single execution | pending | - | - | Single slice, headless Claude |
 | - | gl slice parallel execution | pending | - | - | tmux spawning for 2+ ready slices |
