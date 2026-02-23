@@ -152,6 +152,29 @@ graph TD
 | S-33 | Documentation and CLAUDE.md | complete | 22 | 2026-02-22 | State format awareness hard rule, both formats documented |
 | S-34 | Manifest integration and verification | complete | 11 | 2026-02-22 | +3 manifest entries (35→38), all buildTestFS helpers updated |
 
+## Milestone: cli-orchestrator [active]
+
+**Goal:** Extend the Go CLI binary into a full `gl` orchestrator that runs `/gl:slice` sessions autonomously, executes multiple slices in parallel via tmux, provides local commands (`gl status`, `gl roadmap`, `gl changelog`) that work without Claude, and handles interactive commands (`gl init`, `gl design`) that need user input.
+
+| Slice | Description | Status | Tests | Completed | Key Decision |
+|-------|-------------|--------|-------|-----------|--------------|
+| S-35 | Frontmatter parser (internal/frontmatter) | complete | 22 | 2026-02-23 | Flat key-value line parser, stdlib only |
+| - | State reader (internal/state) | pending | - | - | Read slices/*.md + GRAPH.json, compute ready/blocked |
+| - | CLI dispatch refactoring | pending | - | - | Add new subcommand cases to cli.Run() |
+| - | gl status command | pending | - | - | Read all slice files, progress display |
+| - | gl help command | pending | - | - | Context-aware help with project state detection |
+| - | gl roadmap command | pending | - | - | Read and display ROADMAP.md |
+| - | gl changelog command | pending | - | - | Read and display from summaries/*.md |
+| - | Process spawner (internal/process) | pending | - | - | Claude process via os/exec with lifecycle management |
+| - | tmux manager (internal/tmux) | pending | - | - | Session/pane management via os/exec |
+| - | gl slice single execution | pending | - | - | Single slice, headless Claude |
+| - | gl slice parallel execution | pending | - | - | tmux spawning for 2+ ready slices |
+| - | gl slice watch mode | pending | - | - | Poll loop, auto-refill completed slots |
+| - | gl init / gl design commands | pending | - | - | Interactive Claude launching |
+| - | Signal handling and integration | pending | - | - | SIGINT/SIGTERM graceful shutdown |
+
+**Note:** Slice IDs and exact boundaries will be assigned by the architect during contract generation. The rows above represent logical groupings from the design, not final slices.
+
 ## Milestone: cli-hardening [planning]
 
 **Goal:** Harden the Go CLI with proper error handling, input validation, atomic install, named constants, and new upgrade and doctor commands.
