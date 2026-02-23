@@ -163,8 +163,7 @@ graph TD
 | S-37 | CLI dispatch extension | complete | 12 | 2026-02-23 | Stub handlers, categorized usage, no contentFS for new commands |
 | S-38 | gl status command | complete | 24 | 2026-02-23 | 20-char ASCII bar, graceful GRAPH.json degradation, --compact for tmux |
 | - | gl help command | pending | - | - | Context-aware help with project state detection |
-| - | gl roadmap command | pending | - | - | Read and display ROADMAP.md |
-| - | gl changelog command | pending | - | - | Read and display from summaries/*.md |
+| S-40 | Roadmap and Changelog Commands | complete | 25 | 2026-02-23 | Verbatim roadmap, sorted changelog with --- separators |
 | - | Process spawner (internal/process) | pending | - | - | Claude process via os/exec with lifecycle management |
 | - | tmux manager (internal/tmux) | pending | - | - | Session/pane management via os/exec |
 | - | gl slice single execution | pending | - | - | Single slice, headless Claude |
