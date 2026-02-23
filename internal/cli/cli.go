@@ -39,8 +39,7 @@ func Run(args []string, contentFS fs.FS, stdout io.Writer) int {
 	case "changelog":
 		return cmd.RunChangelog(args[1:], stdout)
 	case "help", "--help", "-h":
-		printUsage(stdout)
-		return 0
+		return cmd.RunHelp(args[1:], stdout)
 	default:
 		fmt.Fprintf(stdout, "unknown command: %s\n\n", args[0])
 		printUsage(stdout)
