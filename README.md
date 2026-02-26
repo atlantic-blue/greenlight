@@ -16,6 +16,12 @@ TDD-first development system for [Claude Code](https://docs.anthropic.com/en/doc
 curl -fsSL https://raw.githubusercontent.com/atlantic-blue/greenlight/main/install.sh | sh
 ```
 
+Or with npx:
+
+```bash
+npx greenlight-cc install --global
+```
+
 Then:
 
 ```bash
