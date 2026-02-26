@@ -1,3 +1,9 @@
+## [2.1.0](https://github.com/atlantic-blue/greenlight/compare/v2.0.0...v2.1.0) (2026-02-26)
+
+### Features
+
+* cli install.sh ([#9](https://github.com/atlantic-blue/greenlight/issues/9)) ([aab3f9a](https://github.com/atlantic-blue/greenlight/commit/aab3f9aea882f724ae87c39bab7e9e2773ea2a9b))
+
 ## [2.0.0](https://github.com/atlantic-blue/greenlight/compare/v1.5.0...v2.0.0) (2026-02-26)
 
 ### ⚠ BREAKING CHANGES
