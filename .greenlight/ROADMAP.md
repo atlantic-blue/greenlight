@@ -167,7 +167,7 @@ graph TD
 | S-41 | Process Spawner | complete | 15 | 2026-02-23 | LookPath DI for testability, --dangerously-skip-permissions stripping |
 | S-43 | tmux Manager (internal/tmux) | complete | 18 | 2026-02-23 | LookPath DI, Build* pattern, no shell concatenation |
 | S-42 | Single Slice Command | complete | 36 | 2026-02-26 | Config-driven flags, wave/ID auto-detect, context-aware dispatch |
-| - | gl slice parallel execution | pending | - | - | tmux spawning for 2+ ready slices |
+| S-44 | Parallel Slice Execution | complete | 38 | 2026-02-26 | Default max 4, tmux session naming, sequential fallback |
 | - | gl slice watch mode | pending | - | - | Poll loop, auto-refill completed slots |
 | - | gl init / gl design commands | pending | - | - | Interactive Claude launching |
 | - | Signal handling and integration | pending | - | - | SIGINT/SIGTERM graceful shutdown |
