@@ -169,7 +169,7 @@ graph TD
 | S-42 | Single Slice Command | complete | 36 | 2026-02-26 | Config-driven flags, wave/ID auto-detect, context-aware dispatch |
 | S-44 | Parallel Slice Execution | complete | 38 | 2026-02-26 | Default max 4, tmux session naming, sequential fallback |
 | S-46 | Interactive Commands | complete | 46 | 2026-02-26 | Context-aware dispatch, .greenlight/ check for design only |
-| - | gl slice watch mode | pending | - | - | Poll loop, auto-refill completed slots |
+| S-45 | Watch Mode | complete | 50 | 2026-02-26 | Configurable interval, enhanced dry-run categories, immediate termination |
 | - | Signal handling and integration | pending | - | - | SIGINT/SIGTERM graceful shutdown |
 
 **Note:** Slice IDs and exact boundaries will be assigned by the architect during contract generation. The rows above represent logical groupings from the design, not final slices.
