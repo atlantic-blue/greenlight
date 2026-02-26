@@ -21,11 +21,14 @@ const defaultMaxWindows = 4
 
 const defaultTmuxSessionPrefix = "gl"
 
+const defaultWatchInterval = 30
+
 // sliceConfig holds the parsed structure of .greenlight/config.json.
 type sliceConfig struct {
 	Parallel struct {
-		ClaudeFlags      []string `json:"claude_flags"`
-		TmuxSessionPrefix string  `json:"tmux_session_prefix"`
+		ClaudeFlags           []string `json:"claude_flags"`
+		TmuxSessionPrefix     string   `json:"tmux_session_prefix"`
+		WatchIntervalSeconds  int      `json:"watch_interval_seconds"`
 	} `json:"parallel"`
 }
 
@@ -33,6 +36,7 @@ type sliceConfig struct {
 type sliceFlags struct {
 	dryRun     bool
 	sequential bool
+	watch      bool
 	max        int
 }
 
@@ -77,6 +81,8 @@ func parseSliceFlags(args []string) (sliceFlags, []string) {
 			flags.dryRun = true
 		case arg == "--sequential":
 			flags.sequential = true
+		case arg == "--watch":
+			flags.watch = true
 		case arg == "--max":
 			if index+1 < len(args) {
 				index++
@@ -129,6 +135,14 @@ func tmuxSessionPrefix(config sliceConfig) string {
 		return config.Parallel.TmuxSessionPrefix
 	}
 	return defaultTmuxSessionPrefix
+}
+
+// watchIntervalSeconds returns the configured interval or the default.
+func watchIntervalSeconds(config sliceConfig) int {
+	if config.Parallel.WatchIntervalSeconds > 0 {
+		return config.Parallel.WatchIntervalSeconds
+	}
+	return defaultWatchInterval
 }
 
 // projectName returns the base name of the current working directory.
@@ -196,6 +210,18 @@ func runAutoDetect(
 		return 1
 	}
 
+	// Enhanced dry-run (C-114): categorised output always takes precedence over
+	// normal dispatch. This must be checked before the "0 ready" early return.
+	if flags.dryRun {
+		printEnhancedDryRun(slices, graph, flags, config, executionContext, stdout)
+		return 0
+	}
+
+	// Watch mode (C-113): check for immediate termination before any dispatch.
+	if flags.watch {
+		return runWatch(slices, graph, flags, config, executionContext, stdout)
+	}
+
 	readySlices := state.FindReadySlices(slices, graph)
 
 	if len(readySlices) == 0 {
@@ -231,6 +257,224 @@ func runAutoDetect(
 	// Single ready slice: run directly (no parallel tmux session needed).
 	targetSlice := readySlices[0]
 	return runNamedSlice(targetSlice.ID, flags, config, executionContext, stdout)
+}
+
+// runWatch implements C-113: watch mode loop.
+// On initial check, if no running and no ready slices, terminates immediately.
+// Inside Claude context, delegates to normal auto-detect (no poll loop).
+func runWatch(
+	slices []state.SliceInfo,
+	graph *state.Graph,
+	flags sliceFlags,
+	config sliceConfig,
+	executionContext state.ExecutionContext,
+	stdout io.Writer,
+) int {
+	// Inside Claude: delegate to normal single-slice behaviour without poll loop.
+	if executionContext.InsideClaude {
+		readySlices := state.FindReadySlices(slices, graph)
+		if len(readySlices) == 0 {
+			printWatchSummary(slices, stdout)
+			return 0
+		}
+		targetSlice := readySlices[0]
+		if len(readySlices) > 1 {
+			remaining := len(readySlices) - 1
+			fmt.Fprintf(stdout, "hint: %d more ready slice(s) available. Use --max or parallel mode (S-44) to run concurrently.\n", remaining)
+		}
+		return runNamedSlice(targetSlice.ID, flags, config, executionContext, stdout)
+	}
+
+	readySlices := state.FindReadySlices(slices, graph)
+	runningSlices := filterRunning(slices)
+
+	// Immediate termination: no work in progress and nothing ready to launch.
+	if len(readySlices) == 0 && len(runningSlices) == 0 {
+		printWatchSummary(slices, stdout)
+		return 0
+	}
+
+	// Initial launch: start up to --max ready slices.
+	planned := readySlices
+	if len(planned) > flags.max {
+		planned = planned[:flags.max]
+	}
+
+	if flags.sequential || !tmux.IsAvailable() {
+		if len(planned) > 0 {
+			return spawnSlice(planned[0].ID, config, stdout)
+		}
+		printWatchSummary(slices, stdout)
+		return 0
+	}
+
+	if len(planned) >= 2 {
+		return executeTmuxSession(planned, flags.max, config, stdout)
+	}
+
+	if len(planned) == 1 {
+		return spawnSlice(planned[0].ID, config, stdout)
+	}
+
+	printWatchSummary(slices, stdout)
+	return 0
+}
+
+// printWatchSummary prints a termination summary for watch mode.
+// When pending slices are blocked (0 ready, 0 running), it also notes the
+// blocked state so callers can diagnose dependency deadlocks.
+func printWatchSummary(slices []state.SliceInfo, stdout io.Writer) {
+	total := len(slices)
+	doneCount := 0
+	pendingCount := 0
+	totalTests := 0
+	for _, slice := range slices {
+		switch slice.Status {
+		case "complete":
+			doneCount++
+			totalTests += slice.Tests
+		case "pending":
+			pendingCount++
+		}
+	}
+	fmt.Fprintf(stdout, "Watch complete: %d/%d slices done, %d tests\n", doneCount, total, totalTests)
+	if pendingCount > 0 {
+		fmt.Fprintf(stdout, "No ready slices: %d pending slice(s) are blocked waiting on dependencies.\n", pendingCount)
+	}
+}
+
+// filterRunning returns slices with status "in_progress".
+func filterRunning(slices []state.SliceInfo) []state.SliceInfo {
+	var running []state.SliceInfo
+	for _, slice := range slices {
+		if slice.Status == "in_progress" {
+			running = append(running, slice)
+		}
+	}
+	return running
+}
+
+// printEnhancedDryRun implements C-114: categorised dry-run output.
+// Shows Ready/Running/Blocked/Would-launch categories and includes the
+// parallel or sequential plan detail so existing tests continue to pass.
+func printEnhancedDryRun(
+	slices []state.SliceInfo,
+	graph *state.Graph,
+	flags sliceFlags,
+	config sliceConfig,
+	executionContext state.ExecutionContext,
+	stdout io.Writer,
+) {
+	readySlices := state.FindReadySlices(slices, graph)
+	runningSlices := filterRunning(slices)
+	blockedSlices := findBlockedSlices(slices, graph, readySlices)
+
+	// Limit ready display to --max (to keep "Would launch" and "Ready" aligned).
+	displayReady := readySlices
+	if len(displayReady) > flags.max {
+		displayReady = displayReady[:flags.max]
+	}
+
+	// Print Ready category.
+	if len(displayReady) == 0 {
+		fmt.Fprintln(stdout, "Ready (0):    —")
+	} else {
+		ids := make([]string, 0, len(displayReady))
+		for _, slice := range displayReady {
+			ids = append(ids, slice.ID)
+		}
+		fmt.Fprintf(stdout, "Ready (%d):    %s\n", len(displayReady), strings.Join(ids, ", "))
+	}
+
+	// Print Running category.
+	if len(runningSlices) == 0 {
+		fmt.Fprintln(stdout, "Running (0):  —")
+	} else {
+		parts := make([]string, 0, len(runningSlices))
+		for _, slice := range runningSlices {
+			parts = append(parts, slice.ID+" ("+slice.Step+")")
+		}
+		fmt.Fprintf(stdout, "Running (%d):  %s\n", len(runningSlices), strings.Join(parts, ", "))
+	}
+
+	// Print Blocked category.
+	statusByID := buildStatusMapFromSlices(slices)
+	if len(blockedSlices) == 0 {
+		fmt.Fprintln(stdout, "Blocked (0):  —")
+	} else {
+		parts := make([]string, 0, len(blockedSlices))
+		for _, slice := range blockedSlices {
+			unmet := findUnmetDeps(slice.ID, graph, statusByID)
+			if len(unmet) > 0 {
+				parts = append(parts, slice.ID+" (needs "+strings.Join(unmet, ", ")+")")
+			} else {
+				parts = append(parts, slice.ID)
+			}
+		}
+		fmt.Fprintf(stdout, "Blocked (%d):  %s\n", len(blockedSlices), strings.Join(parts, ", "))
+	}
+
+	// Print Would launch section.
+	if len(displayReady) == 0 {
+		fmt.Fprintln(stdout, "Would launch: none")
+		return
+	}
+
+	// Determine launch mode and print details.
+	if !executionContext.InsideClaude && !flags.sequential && tmux.IsAvailable() && len(displayReady) >= 2 {
+		printEnhancedDryRunParallel(displayReady, flags.max, config, stdout)
+	} else {
+		printEnhancedDryRunSequential(displayReady, flags, stdout)
+	}
+}
+
+// printEnhancedDryRunParallel prints the would-launch section for parallel mode.
+func printEnhancedDryRunParallel(
+	planned []state.SliceInfo,
+	max int,
+	config sliceConfig,
+	stdout io.Writer,
+) {
+	prefix := tmuxSessionPrefix(config)
+	project := projectName()
+	sessionName := fmt.Sprintf("%s-%s", prefix, project)
+	claudeFlags := strings.Join(config.Parallel.ClaudeFlags, " ")
+
+	ids := make([]string, 0, len(planned))
+	for _, slice := range planned {
+		ids = append(ids, slice.ID)
+	}
+	fmt.Fprintf(stdout, "Would launch: %s (up to --max %d)\n", strings.Join(ids, ", "), max)
+	fmt.Fprintf(stdout, "dry-run: parallel mode — tmux session %q with %d window(s) (max: %d)\n",
+		sessionName, len(planned), max)
+
+	for _, slice := range planned {
+		command := fmt.Sprintf("claude -p '/gl:slice %s' %s", slice.ID, claudeFlags)
+		fmt.Fprintf(stdout, "  window %s: %s\n", slice.ID, command)
+	}
+}
+
+// printEnhancedDryRunSequential prints the would-launch section for sequential mode.
+func printEnhancedDryRunSequential(
+	planned []state.SliceInfo,
+	flags sliceFlags,
+	stdout io.Writer,
+) {
+	if len(planned) == 0 {
+		fmt.Fprintln(stdout, "Would launch: none")
+		return
+	}
+
+	targetSlice := planned[0]
+
+	if flags.sequential {
+		fmt.Fprintf(stdout, "Would launch: %s (sequential)\n", targetSlice.ID)
+		fmt.Fprintf(stdout, "dry-run: sequential mode (--sequential flag set)\n")
+	} else {
+		fmt.Fprintf(stdout, "Would launch: %s (sequential)\n", targetSlice.ID)
+		fmt.Fprintf(stdout, "dry-run: sequential mode (tmux not available)\n")
+	}
+	fmt.Fprintf(stdout, "would run: slice %s\n", targetSlice.ID)
 }
 
 // runParallel handles parallel execution via tmux sessions.
