@@ -1,3 +1,15 @@
+## [2.0.0](https://github.com/atlantic-blue/greenlight/compare/v1.5.0...v2.0.0) (2026-02-26)
+
+### ⚠ BREAKING CHANGES
+
+* trigger release
+* parallel slices
+
+### Features
+
+* parallel slices ([574fa1f](https://github.com/atlantic-blue/greenlight/commit/574fa1f21c3746bab5b93fce131bebe17eaf6066))
+* trigger release ([ad0da4a](https://github.com/atlantic-blue/greenlight/commit/ad0da4afd0b4240bb229694ae1970d7ef29fec96))
+
 # [1.5.0](https://github.com/atlantic-blue/greenlight/compare/v1.4.0...v1.5.0) (2026-02-19)
 
 
