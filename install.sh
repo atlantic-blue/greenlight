@@ -2,10 +2,12 @@
 set -e
 
 # Greenlight installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/atlantic-blue/greenlight/main/install.sh | sh
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/atlantic-blue/greenlight/main/install.sh | sh
+#   curl -fsSL ... | INSTALL_DIR=~/.local/bin sh
 
 REPO="atlantic-blue/greenlight"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY="greenlight"
 
 main() {
@@ -85,16 +87,26 @@ download_and_install() {
         exit 1
     fi
 
+    # Create install dir if it doesn't exist
+    mkdir -p "$INSTALL_DIR"
+
     echo "Installing to ${INSTALL_DIR}/${BINARY}..."
 
     if [ -w "$INSTALL_DIR" ]; then
         mv "${TMP_DIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
     else
-        echo "(requires sudo)"
         sudo mv "${TMP_DIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
     fi
 
     chmod +x "${INSTALL_DIR}/${BINARY}"
+
+    # Create 'gl' symlink
+    if [ -w "$INSTALL_DIR" ]; then
+        ln -sf "${INSTALL_DIR}/${BINARY}" "${INSTALL_DIR}/gl"
+    else
+        sudo ln -sf "${INSTALL_DIR}/${BINARY}" "${INSTALL_DIR}/gl"
+    fi
+
     rm -rf "$TMP_DIR"
 }
 
@@ -110,8 +122,8 @@ verify_install() {
         echo "  greenlight help"
     else
         echo ""
-        echo "Installed to ${INSTALL_DIR}/${BINARY} but it's not in your PATH."
-        echo "Add ${INSTALL_DIR} to your PATH, or move the binary:"
+        echo "Installed to ${INSTALL_DIR}/${BINARY}"
+        echo "Add it to your PATH:"
         echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
     fi
 }
