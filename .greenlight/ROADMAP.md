@@ -1,7 +1,7 @@
 # Product Roadmap
 
 Project: greenlight
-Updated: 2026-02-19
+Updated: 2026-02-22
 
 ## Architecture
 
@@ -22,9 +22,9 @@ graph TD
 
     subgraph Embedded["Embedded Content (src/)"]
         Agents["agents/*.md<br/>(10 agent definitions)"]
-        Commands["commands/gl/*.md<br/>(17 command definitions)"]
-        References["references/*.md<br/>(5 reference docs)"]
-        Templates["templates/*.md<br/>(2 templates)"]
+        Commands["commands/gl/*.md<br/>(18 command definitions)"]
+        References["references/*.md<br/>(6 reference docs)"]
+        Templates["templates/*.md<br/>(3 templates)"]
         ClaudeMD["CLAUDE.md<br/>(engineering standards)"]
     end
 
@@ -37,7 +37,9 @@ graph TD
 
     subgraph Runtime[".greenlight/ (runtime state)"]
         Config["config.json"]
-        State["STATE.md"]
+        SlicesDir["slices/*.md<br/>(per-slice state)"]
+        ProjectState["project-state.json<br/>(non-slice state)"]
+        State["STATE.md<br/>(generated summary)"]
         Contracts["CONTRACTS.md"]
         Graph["GRAPH.json"]
         Design["DESIGN.md"]
@@ -135,6 +137,42 @@ graph TD
 | S-27 | Architect integration: tier generation guidance | complete | 60 | 2026-02-19 | Verification Tier Selection section + 4 output checklist items |
 
 **Summary:** 6 slices, 253 additional tests (710 total). Verification tiers close the gap between "tests pass" and "user got what they asked for."
+
+## Milestone: parallel-state [complete]
+
+**Goal:** Fix concurrent session state corruption by replacing the single STATE.md with per-slice state files. Each session writes only to its own slice's file, eliminating write conflicts by design. STATE.md becomes a generated summary view. Backward compatible with existing projects.
+
+| Slice | Description | Status | Tests | Completed | Key Decision |
+|-------|-------------|--------|-------|-----------|--------------|
+| S-28 | Slice state template and reference docs | complete | 93 | 2026-02-22 | Flat key-value frontmatter, state-format.md detection logic |
+| S-29 | Init command and state detection | complete | 43 | 2026-02-22 | Directory existence check, slices/ dir + project-state.json |
+| S-30 | Slice command state write | complete | 42 | 2026-02-22 | Immediate session claim, own-file writes only, STATE.md regen |
+| S-31 | Supporting command updates | complete | 74 | 2026-02-22 | All 6 commands gain state detection, format-aware read/write paths |
+| S-32 | Migration command (/gl:migrate-state) | complete | 55 | 2026-02-22 | One-way explicit migration, all-or-nothing atomicity, backup preserved |
+| S-33 | Documentation and CLAUDE.md | complete | 22 | 2026-02-22 | State format awareness hard rule, both formats documented |
+| S-34 | Manifest integration and verification | complete | 11 | 2026-02-22 | +3 manifest entries (35→38), all buildTestFS helpers updated |
+
+## Milestone: cli-orchestrator [active]
+
+**Goal:** Extend the Go CLI binary into a full `gl` orchestrator that runs `/gl:slice` sessions autonomously, executes multiple slices in parallel via tmux, provides local commands (`gl status`, `gl roadmap`, `gl changelog`) that work without Claude, and handles interactive commands (`gl init`, `gl design`) that need user input.
+
+| Slice | Description | Status | Tests | Completed | Key Decision |
+|-------|-------------|--------|-------|-----------|--------------|
+| S-35 | Frontmatter parser (internal/frontmatter) | complete | 22 | 2026-02-23 | Flat key-value line parser, stdlib only |
+| S-36 | State reader (internal/state) | complete | 41 | 2026-02-23 | os.ReadDir + frontmatter.Parse, json.RawMessage for field detection |
+| S-37 | CLI dispatch extension | complete | 12 | 2026-02-23 | Stub handlers, categorized usage, no contentFS for new commands |
+| S-38 | gl status command | complete | 24 | 2026-02-23 | 20-char ASCII bar, graceful GRAPH.json degradation, --compact for tmux |
+| S-39 | Help Command | complete | 13 | 2026-02-23 | Best-effort state summary, directory detection |
+| S-40 | Roadmap and Changelog Commands | complete | 25 | 2026-02-23 | Verbatim roadmap, sorted changelog with --- separators |
+| S-41 | Process Spawner | complete | 15 | 2026-02-23 | LookPath DI for testability, --dangerously-skip-permissions stripping |
+| S-43 | tmux Manager (internal/tmux) | complete | 18 | 2026-02-23 | LookPath DI, Build* pattern, no shell concatenation |
+| S-42 | Single Slice Command | complete | 36 | 2026-02-26 | Config-driven flags, wave/ID auto-detect, context-aware dispatch |
+| S-44 | Parallel Slice Execution | complete | 38 | 2026-02-26 | Default max 4, tmux session naming, sequential fallback |
+| S-46 | Interactive Commands | complete | 46 | 2026-02-26 | Context-aware dispatch, .greenlight/ check for design only |
+| S-45 | Watch Mode | complete | 50 | 2026-02-26 | Configurable interval, enhanced dry-run categories, immediate termination |
+| - | Signal handling and integration | pending | - | - | SIGINT/SIGTERM graceful shutdown |
+
+**Note:** Slice IDs and exact boundaries will be assigned by the architect during contract generation. The rows above represent logical groupings from the design, not final slices.
 
 ## Milestone: cli-hardening [planning]
 

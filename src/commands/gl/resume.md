@@ -97,3 +97,42 @@ Update STATE.md session section:
 Last session: {now}
 Resume file: None
 ```
+
+---
+
+## File-Per-Slice State Integration (C-84)
+
+This section documents how /gl:resume adapts its state reads when the project uses file-per-slice format (C-80). Legacy format behaviour is completely unchanged — if the state format is legacy, all reads go to STATE.md as before.
+
+### State Format Detection
+
+Detect state format (C-80) before performing any state reads:
+
+- If file-per-slice: read slice files from `.greenlight/slices/` to determine resumable state, read resume context from `project-state.json`
+- If legacy: read STATE.md as before (no change)
+
+### File-Per-Slice Read Path
+
+When using file-per-slice format:
+
+1. Read all slice files from `.greenlight/slices/` to identify in-progress or paused slices
+2. Read resume context from `project-state.json` (slice, step, paused_at, next action, context needed)
+3. If resume context exists in `project-state.json`, restore from it; otherwise infer state from slice files
+
+### Legacy Fallback
+
+If format is legacy: read STATE.md as before. Legacy format behaviour is completely unchanged — no change.
+
+### Error Handling
+
+| Error State | When | Behaviour |
+|-------------|------|-----------|
+| FormatDetectionFailure | Cannot determine state format | Report error. Suggest running /gl:init |
+| SliceFileNotFound | Referenced slice file does not exist in `.greenlight/slices/` | Report error. Cannot resume without slice file |
+| RegenerationFailure | STATE.md regeneration fails | Warn but continue. Slice files are still correct |
+
+### Invariants
+
+- Resume context from `project-state.json` takes precedence over inferred state from slice files
+- Legacy format behaviour is completely unchanged
+- Slice files in `.greenlight/slices/` are the source of truth for slice state

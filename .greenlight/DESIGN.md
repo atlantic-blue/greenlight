@@ -1,30 +1,30 @@
-# System Design: Verification Tiers
+# System Design: Greenlight CLI with Parallel Execution
 
 > **Project:** Greenlight
-> **Scope:** Add verification tier system to close the gap between "tests pass" and "user got what they asked for" -- per-contract verification levels (auto/verify), human acceptance gates, rejection-to-TDD routing, and escalation.
-> **Stack:** Go 1.24, stdlib only. Deliverables are embedded markdown content plus one manifest entry.
-> **Date:** 2026-02-19
-> **Replaces:** Previous DESIGN.md (circuit-breaker -- complete, 456 tests passing)
+> **Scope:** Extend the Go CLI binary into a full `gl` orchestrator that runs `/gl:slice` sessions autonomously, executes multiple slices in parallel via tmux, provides local commands (`gl status`, `gl roadmap`, `gl changelog`) that work without Claude, and handles interactive commands (`gl init`, `gl design`) that need user input.
+> **Stack:** Go 1.24, stdlib only. New internal packages for frontmatter parsing, state reading, tmux management, and process spawning.
+> **Date:** 2026-02-22
+> **Replaces:** Previous DESIGN.md (parallel-state -- complete, 1050 tests passing)
 
 ---
 
 ## 1. Problem Statement
 
-Tests pass but output doesn't match user intent. The current system has a blind spot: after the verifier confirms contract coverage and test results, the slice is marked complete -- but "tests pass" doesn't mean "the user got what they asked for." The system is marking its own homework.
+Running parallel slices today requires manually opening terminals, picking slices, and tracking what's running. Parallelism should be a first-class Greenlight feature, not manual coordination.
 
-**Real-world failure mode:** User asks for a card-based campaign visualization. Tests pass (component renders, data flows, assertions pass). But the actual output is a table with card styling -- not the card layout the user intended. The verifier sees tests passing and marks the slice complete. The user only discovers the mismatch later.
+### Root Cause
 
-### Current State Gap
+There is no CLI orchestrator that can:
+- Detect which slices are ready (status=pending, all deps=complete)
+- Spawn Claude processes headlessly
+- Manage tmux sessions for parallel execution
+- Monitor progress and auto-refill completed slots
 
-The existing `/gl:slice` pipeline (Step 6 verification + Step 9 visual checkpoint) has four gaps:
+Users manually run `/gl:slice` in separate terminals, manually check GRAPH.json for dependencies, and manually track what's running.
 
-1. **No human verification for non-UI slices.** The `visual_checkpoint` toggle only triggers for UI slices. Business logic, API behavior, and data processing slices skip human verification entirely. Tests pass and the slice is marked complete.
+### What This Design Solves
 
-2. **Visual checkpoint is binary.** It either runs or it doesn't. There is no middle ground between "automated verification only" and "user must run the app and look at it." A structured acceptance review (checking criteria without running the app) is not supported.
-
-3. **No rejection-to-TDD loop.** When the visual checkpoint surfaces a mismatch, the orchestrator spawns a debugger. This breaks TDD discipline -- the correct response is to write a test that captures the user's intent, then make the implementer pass it.
-
-4. **No escalation on repeated rejection.** If the user keeps rejecting, the system keeps looping. There is no circuit-breaker equivalent for human verification -- no threshold where the system acknowledges "this slice needs re-scoping."
+The `gl` CLI becomes the single entry point for all operations -- both from the shell and from inside Claude. The CLI handles orchestration, state reading, and tmux management. Claude skills (`/gl:slice`, `/gl:status`, etc.) call the CLI under the hood.
 
 ---
 
@@ -32,52 +32,57 @@ The existing `/gl:slice` pipeline (Step 6 verification + Step 9 visual checkpoin
 
 ### 2.1 Functional Requirements
 
-**FR-1: Per-Contract Verification Tier.** Every contract has a `verification` field with value `auto` or `verify`. Default is `verify`. The tier determines what happens after tests pass and the verifier approves.
+**FR-1: CLI command dispatch.** The existing Go binary gains new subcommands (`slice`, `status`, `help`, `roadmap`, `changelog`, `init`, `design`, etc.) alongside existing ones (`install`, `check`, `uninstall`, `version`).
 
-**FR-2: Auto Tier Behavior.** When all contracts in a slice are tier `auto`, the slice proceeds directly from verification (Step 6) to summary/docs (Step 7). No human checkpoint. This is the current default behavior, preserved for infrastructure, config, and internal plumbing slices.
+**FR-2: Three command categories.** Every command falls into one of three execution modes:
 
-**FR-3: Verify Tier Behavior.** When any contract in a slice has tier `verify`, the orchestrator presents a structured checkpoint combining acceptance criteria and optional steps. The user confirms the output matches intent or describes what doesn't match. This subsumes the existing `visual_checkpoint` functionality.
+| Mode | What happens | Needs Claude? | Examples |
+|------|-------------|---------------|----------|
+| **Interactive** | Runs claude in conversational mode -- needs human input | Yes (interactive) | `gl init`, `gl design` |
+| **Autonomous** | Runs claude headlessly -- no human input needed | Yes (headless) | `gl slice`, `gl quick`, `gl wrap`, `gl assess` |
+| **Local** | CLI handles it directly -- reads files, prints output | No | `gl status`, `gl roadmap`, `gl changelog`, `gl help` |
 
-**FR-4: Tier Resolution.** A slice's effective verification tier is the highest tier among all its contracts: `verify` > `auto`. Acceptance criteria and steps from all `verify` contracts are aggregated into a single checkpoint. One approval per slice.
+**FR-3: Context detection.** `$CLAUDE_CODE` env var distinguishes execution context:
+- Set -> running inside Claude -> commands behave as agent tools
+- Unset -> running from shell -> commands behave as CLI tools
 
-**FR-5: Rejection Flow to Test Writer.** When the user rejects (anything other than "approved"), the orchestrator collects the feedback, presents structured options that implicitly classify the gap (test gap, implementation gap, or contract gap), and routes accordingly:
-- Test gap or implementation gap: spawn test writer with rejection feedback (behavioral, no implementation details), contract, and acceptance criteria. New tests written, then implementer makes them pass.
-- Contract gap: present to user for contract revision, then restart slice.
+**FR-4: Parallel slice execution.** When 2+ slices are ready and tmux is available, create a tmux session with tiled panes, one per independent slice.
 
-**FR-6: Rejection Counter with Escalation.** Track rejections per slice. After 3 rejections on the same slice, trigger escalation with options: re-scope the slice, pair with user for detailed guidance, or skip verification (mark as auto and proceed with known mismatch).
+**FR-5: Watch mode.** `gl slice --watch` polls every 30s, detects completed slices, and auto-fills empty slots with newly ready slices.
 
-**FR-7: Contract Schema Extension.** Add three optional fields to the contract format: `verification` (auto/verify, default verify), `acceptance_criteria` (list of behavioral criteria), `steps` (list of steps to verify, optional). If `verification` is `verify`, warn if both `acceptance_criteria` and `steps` are empty. If `verification` is `auto`, `acceptance_criteria` and `steps` are ignored.
+**FR-6: Sequential fallback.** When tmux is unavailable, run slices one at a time, re-scanning for ready slices after each completion.
 
-**FR-8: Backward Compatibility.** Contracts without an explicit `verification` field default to `verify`. The existing `config.workflow.visual_checkpoint` toggle is deprecated with a warning -- tiers in contracts supersede it.
+**FR-7: Local commands without Claude.** `gl status`, `gl help`, `gl roadmap`, `gl changelog` read files directly and print output. No Claude process needed.
+
+**FR-8: Interactive command launching.** `gl init` and `gl design` launch Claude in interactive mode (user present, not headless).
+
+**FR-9: Frontmatter parsing.** The Go binary can parse flat key-value YAML frontmatter from `.greenlight/slices/*.md` files to determine slice status and dependencies.
+
+**FR-10: State reading.** The Go binary can read GRAPH.json dependencies and compute which slices are ready (pending + all deps complete + not in_progress).
 
 ### 2.2 Non-Functional Requirements
 
-**NFR-1: Zero Go Code for Protocol.** The verification tier protocol is entirely embedded content (markdown files in `src/`). The only Go change is adding the new reference file to the installer manifest.
+**NFR-1: stdlib only.** All Go code uses stdlib only. No external dependencies.
 
-**NFR-2: Context Budget.** The verification tiers reference document must be concise enough that loading it does not push the orchestrator agent past the 30% context threshold. Target: under 150 lines.
+**NFR-2: Performance.** `gl status` completes in under 1 second for 50+ slice files.
 
-**NFR-3: Agent Isolation Preserved.** The test writer receives the user's rejection feedback verbatim (behavioral description), the contract, and acceptance criteria. No implementation code, no test source code from the current cycle. The implementer still receives test names only.
+**NFR-3: Graceful shutdown.** SIGINT/SIGTERM handling for clean tmux session teardown.
 
-**NFR-4: Checkpoint Consistency.** Verification tier checkpoints follow the same format patterns as existing checkpoint types (Visual, Decision, External Action, Circuit Break) in `references/checkpoint-protocol.md`.
+**NFR-4: Error messages.** Clear actionable errors: tmux not installed, claude not in PATH, no slices ready, etc.
 
 ### 2.3 Constraints
 
-- Go 1.24, stdlib only. No external dependencies.
-- All content embedded via `go:embed` from `src/` directory.
-- Must integrate with existing agent isolation rules.
-- Must not break existing 456 tests.
-- Must preserve existing circuit breaker protocol -- verification tiers are additive.
-- Must preserve existing deviation rules protocol.
-- Rejection routing must go through the test writer first (TDD-correct approach).
+- Go 1.24 stdlib only
+- Must not break existing 1050 tests
+- Extends existing binary (no separate CLI)
+- tmux for parallelism (no custom terminal multiplexer)
 
 ### 2.4 Out of Scope
 
-- **Automated acceptance detection.** The system does not auto-detect whether acceptance criteria are met. A human decides.
-- **Screenshot comparison.** No visual diffing or pixel-level verification. Human eyes only.
-- **Partial approval.** The user approves or rejects the entire slice checkpoint, not individual criteria. Future work could support per-criterion approval.
-- **Rejection history persistence.** Rejection feedback is passed to the test writer in the current cycle. It is not persisted to `.greenlight/` for cross-session reference. Future work could save rejection history.
-- **Configurable rejection threshold.** 3 rejections per slice is fixed. Matches the circuit breaker's per-test threshold. Configurability deferred until real-world data calibrates the right default.
-- **AI-assisted gap classification.** The orchestrator presents options to the user. It does not use AI to auto-classify the gap type. The user's choice is the classification.
+- Custom terminal multiplexer (tmux only)
+- Remote execution (local machine only)
+- Web dashboard for monitoring
+- Windows support for tmux features
 
 ---
 
@@ -85,335 +90,429 @@ The existing `/gl:slice` pipeline (Step 6 verification + Step 9 visual checkpoin
 
 | # | Decision | Chosen | Rejected | Rationale |
 |---|----------|--------|----------|-----------|
-| 1 | Verification tier count | Two tiers: `auto` and `verify` | Three tiers (auto/review/demo) -- the distinction between review and demo is artificial. In both cases the user opens the app, looks at output, and confirms intent. The contract author doesn't need to choose between "check a list" and "walk through steps." | Simpler is better. One decision: "Can tests alone capture my intent for this slice?" Two tiers, not three. |
-| 2 | Default verification tier | `verify` -- forgetting to set a tier gives a human checkpoint | `auto` (current behavior, but unsafe) | Safe default. Forgetting to annotate a contract gives you human verification, not silent auto-approve. The cost of an unnecessary verify checkpoint is low (user types "approved"). The cost of a missing checkpoint is a completed slice that doesn't match intent. |
-| 3 | Tier location | In the contract, not in GRAPH.json or config.json | GRAPH.json (per-slice only, loses contract granularity); config.json (global only, no per-boundary control) | The contract is the source of truth for what a boundary does and how it's verified. Tier is a property of the boundary, not the build graph or the project config. |
-| 4 | Rejection routing | Always through test writer first, even for implementation gaps | Direct to implementer with "fix this" instructions; Direct to debugger | TDD-correct. If the implementation is wrong and tests pass, the tests weren't tight enough. Adding a test that specifically asserts the user's intent, then making the implementer pass it, is the right fix. The implementer never gets "fix this" -- they get new failing tests. |
-| 5 | Tier resolution across contracts | Highest tier wins + aggregation. verify > auto. One checkpoint per slice. | Per-contract checkpoints (too many interruptions); Per-slice config only (loses contract granularity) | Minimizes user interruptions. A slice with mixed tiers gets the highest tier with all criteria aggregated. |
-| 6 | Rejection counter scope | Per-slice, escalation at 3 | Per-contract (each contract gets 3 rejections independently) | A slice is the unit of work. If a user has rejected 3 times, the whole slice needs re-scoping. Mirrors the circuit breaker's slice-level ceiling concept. |
-| 7 | Gap classification UX | Orchestrator presents actionable options that implicitly map to gap types | Ask user to classify directly ("Is this a test gap?"); Auto-classify with heuristics | Users should not need to understand Greenlight's internal taxonomy. Present options like "tighten the tests," "revise the contract," or "provide more detail." The user picks what feels right; the orchestrator routes. |
-| 8 | Rejection feedback to test writer | User's verbatim behavioral feedback + contract + acceptance criteria. No implementation details. | Include implementation code (breaks isolation); Include test source (breaks TDD) | Preserves agent isolation. The user's rejection is behavioral ("I expected X, I got Y"). The test writer uses this behavioral description plus the contract to write tighter tests. No implementation leakage. |
-| 9 | visual_checkpoint backward compatibility | Deprecate with warning. Tiers in contracts supersede it. Keep in config but ignore. | Remove from config (breaking change); Add new config field (unnecessary -- tiers live in contracts) | The default `verify` tier already provides human verification for all non-auto slices. The `visual_checkpoint` toggle is redundant. Deprecation with warning is the cleanest migration path. |
-| 10 | New reference file | New `references/verification-tiers.md` (follows circuit-breaker.md pattern) | Extend `references/verification-patterns.md` (different concerns -- automated vs human) | Existing verification-patterns.md covers automated verification (stubs, wiring, test quality). Verification tiers cover human acceptance. Different concerns, different audiences. |
-| 11 | Verify checkpoint content | Combined: `acceptance_criteria` (what to check) + `steps` (how to check, optional) under one tier | Separate review and demo tiers with different required fields | The user does the same thing in both cases: look at the output and confirm intent. Criteria describe what to verify. Steps describe how, when the how isn't obvious. Both optional but warn if neither present. |
+| D-40 | CLI language | Extend existing Go binary | Separate Node.js CLI | Single binary, already has CLI dispatch, flag parsing, and test patterns. No new runtime dependency. |
+| D-41 | Parallelism mechanism | tmux sessions | Go goroutines with terminal mux; GNU screen | tmux is ubiquitous, provides visual monitoring, and users can attach/detach. Screen is less common. Goroutines would hide output. |
+| D-42 | Claude process spawning | `os/exec.Command` with stdout/stderr capture | Shell scripts; embedded Claude SDK | Direct process control, Go stdlib, full lifecycle management. |
+| D-43 | Frontmatter parsing | Simple key-value line parser (stdlib) | External YAML library; regex parsing | Flat key-value only (no nesting). Line-by-line string splitting is reliable and trivially testable. |
+| D-44 | Context detection | `$CLAUDE_CODE` env var | Config flag; CLI flag | Environment variable is set automatically by Claude Code. No user action needed. Reliable detection. |
+| D-45 | Watch interval | 30 seconds configurable | Real-time filesystem watching; 5 second polling | 30s balances responsiveness with CPU usage. File watching adds inotify/kqueue complexity. |
+| D-46 | Command routing | Extend existing `cli.Run` switch statement | Separate command registry; plugin system | Consistent with existing pattern. Simple, tested, no abstraction needed for ~15 commands. |
 
 ---
 
 ## 4. Architecture
 
-### 4.1 Component Overview
-
-The verification tier system is five components distributed across existing system files plus one new file:
+### 4.1 The Greenlight CLI
 
 ```
-src/
-  CLAUDE.md                          # +4 lines: hard rule reference
-  references/
-    verification-tiers.md            # NEW: full protocol (~130 lines)
-                                     #   - tier definitions and defaults
-                                     #   - verify checkpoint format
-                                     #   - rejection flow
-                                     #   - rejection counter + escalation
-                                     #   - gap classification routing
-    checkpoint-protocol.md           # MODIFY: add Acceptance checkpoint type
-                                     #   deprecate Visual, update mode table
-    verification-patterns.md         # MODIFY: add cross-reference to tiers
-  agents/
-    gl-architect.md                  # MODIFY: add verification/acceptance_criteria/
-                                     #   steps to contract format
-    gl-verifier.md                   # MODIFY: report tier in verification output
-  commands/
-    gl/
-      slice.md                       # MODIFY: add Step 6b (verification tier gate)
-                                     #   modify Step 9 (deprecate, reference tiers)
-                                     #   add rejection flow handling
-  templates/
-    config.md                        # MODIFY: deprecation note on visual_checkpoint
+gl <command> [options]
 
+Project lifecycle:
+  gl init                 Interactive project setup -- interview, design, contracts, graph
+  gl design               Run system design session -- produces DESIGN.md
+  gl roadmap              Display/manage project roadmap
+
+Building:
+  gl slice [id]           Build slices -- auto-parallelises when multiple are ready
+  gl quick [description]  Ad-hoc task with test-first guarantees
+
+State & progress:
+  gl status               Show project progress from slice state files
+  gl debug [slice_id]     Diagnostic report for a slice
+
+Pre-existing code:
+  gl assess               Analyse codebase for gaps, risks, and wrap priorities
+  gl map                  Analyse codebase with parallel mapper agents
+  gl wrap [boundary]      Wrap existing boundary with contracts and locking tests
+
+Release:
+  gl ship                 Final verification -- all tests green, security audit
+
+Session management:
+  gl pause                Create handoff file when stopping work
+  gl resume               Resume from previous session
+
+Admin:
+  gl migrate              Migrate STATE.md -> file-per-slice state
+  gl settings             Configure model profiles, workflow options
+  gl add-slice [name]     Add a new slice to the dependency graph
+  gl changelog            Display project changelog
+  gl help                 Show all commands and current state
+
+Global options:
+  --max N                 Maximum parallel sessions (default: 4)
+  --watch                 Auto-refill -- start new slices as others complete
+  --dry-run               Preview what would happen without doing it
+  --sequential            Force sequential even if tmux is available
+  --verbose               Show detailed output
+```
+
+### 4.2 New Internal Packages
+
+```
 internal/
-  installer/
-    installer.go                     # +1 manifest entry:
-                                     #   "references/verification-tiers.md"
+  frontmatter/            # YAML frontmatter parser (stdlib only)
+    frontmatter.go        # Parse/write flat key-value frontmatter
+    frontmatter_test.go
+  state/                  # State reader/writer
+    state.go              # Read slices/*.md, GRAPH.json, compute ready slices
+    state_test.go
+  tmux/                   # tmux session management
+    tmux.go               # Create/manage tmux sessions and panes
+    tmux_test.go
+  process/                # Claude process spawning
+    process.go            # Spawn and manage claude processes
+    process_test.go
 ```
 
-### 4.2 Component 1: Verification Tier Gate (Step 6b)
+### 4.3 Command Execution Flow
 
-**Lives in:** `commands/gl/slice.md` (new step) + `references/verification-tiers.md` (protocol)
+#### How interactive commands work
 
-After Step 6 (verification passes) and Step 6a (locking-to-integration transition, if applicable), the orchestrator reads the verification tier for each contract in the slice and resolves the effective tier.
-
-**Tier resolution:**
-
-```
-For each contract in the slice:
-  Read contract.verification (default: "verify")
-
-Effective tier = highest tier among all contracts:
-  verify > auto
-
-If effective tier is auto:
-  Skip to Step 7 (summary/docs)
-
-If effective tier is verify:
-  Aggregate acceptance_criteria from all verify contracts
-  Aggregate steps from all verify contracts
-  Present Verify Checkpoint
-  Wait for user response
+```bash
+# gl init -- launches claude in interactive mode
+$ gl init
+# Launches interactive claude session with the init skill loaded
+# No --dangerously-skip-permissions -- the user is present
 ```
 
-### 4.3 Component 2: Verify Checkpoint
+For interactive commands, the CLI is a thin launcher:
+1. Check `.greenlight/` state to provide context
+2. Launch `claude` with the appropriate skill prompt
+3. No `--dangerously-skip-permissions` -- the user is present
 
-**Lives in:** `references/verification-tiers.md`
+#### How autonomous commands work
 
-Format presented to the user:
-
-```
-ALL TESTS PASSING — Slice {slice_id}: {slice_name}
-
-Please verify the output matches your intent.
-
-Acceptance criteria:
-  [ ] {criterion 1 from contract A}
-  [ ] {criterion 2 from contract A}
-  [ ] {criterion 3 from contract B}
-
-Steps to verify:
-  1. {step 1 from contract A}
-  2. {step 2 from contract A}
-  3. {step 3 from contract B}
-
-Does this match what you intended?
-  1) Yes — mark complete and continue
-  2) No — I'll describe what's wrong
-  3) Partially — some criteria met, I'll describe the gaps
+```bash
+# gl slice -- headless, can parallelise
+$ gl slice
+# 1. CLI reads state, finds ready slices
+# 2. If 1: exec claude -p "/gl:slice {id}" --dangerously-skip-permissions
+# 3. If 2+: spawn tmux, one pane per slice
 ```
 
-If only criteria exist, show criteria. If only steps exist, show steps. If both exist, show both. If neither exists (shouldn't happen due to validation warning, but handle gracefully), just ask "Does the output match your intent?"
+#### How local commands work
 
-### 4.4 Component 3: Rejection Flow
+```bash
+# gl status -- no claude, instant
+$ gl status
+# CLI reads slices/*.md, GRAPH.json, computes and prints
 
-**Lives in:** `references/verification-tiers.md` (protocol) + `commands/gl/slice.md` (orchestrator integration)
+# gl roadmap -- no claude, instant
+$ gl roadmap
+# CLI reads ROADMAP.md and prints
 
-When the user types anything other than "Yes" (option 1):
-
-1. **Capture feedback.** Store the user's verbatim response.
-
-2. **Present classification options.** The orchestrator presents:
-
-```
-Your feedback: "{user's response}"
-
-How should we address this?
-
-1) Tighten the tests -- the tests aren't specific enough to catch this mismatch
-   (routes to: test writer adds more precise assertions, then implementer passes them)
-
-2) Revise the contract -- the contract doesn't capture what I actually want
-   (routes to: you update the contract, then the slice restarts)
-
-3) Provide more detail -- I'll describe exactly what I expect
-   (routes to: test writer uses your detail to write targeted tests, then implementer passes them)
-
-Which option? (1/2/3)
+# gl changelog -- no claude, instant
+$ gl changelog
+# CLI reads summaries/*.md and prints
 ```
 
-3. **Route based on choice:**
-
-| Choice | Internal classification | Action |
-|--------|----------------------|--------|
-| 1 (tighten tests) | Test gap | Spawn test writer with: rejection feedback (verbatim), contract, acceptance criteria. Test writer adds/tightens tests. Then spawn implementer to pass them. Re-run verification tier gate. |
-| 2 (revise contract) | Contract gap | Present contract to user for revision. User edits acceptance criteria or contract definition. Restart slice from Step 1. |
-| 3 (provide detail) | Implementation gap | Collect detailed description from user. Spawn test writer with: detailed description, rejection feedback, contract, acceptance criteria. Test writer writes targeted tests. Then spawn implementer. Re-run verification tier gate. |
-
-4. **Increment rejection counter.** After any rejection, increment the per-slice rejection count.
-
-### 4.5 Component 4: Rejection Counter and Escalation
-
-**Lives in:** `references/verification-tiers.md`
-
-The orchestrator tracks rejections per slice:
-
-```yaml
-slice_id: S-{N}
-rejection_count: 0          # Increments on each non-"approved" response
-rejection_log:
-  - feedback: "{user's words}"
-    classification: "test_gap"
-    action_taken: "spawned test writer with feedback"
-  - feedback: "{user's words}"
-    classification: "implementation_gap"
-    action_taken: "spawned test writer with detailed description"
-```
-
-When `rejection_count` reaches 3:
+### 4.4 `gl slice` -- from the shell
 
 ```
-ESCALATION: {slice_name}
-
-This slice has been rejected 3 times. The verification criteria may not match
-what the contracts and tests can deliver.
-
-Rejection history:
-1. "{feedback 1}" -> {action taken}
-2. "{feedback 2}" -> {action taken}
-3. "{feedback 3}" -> {action taken}
-
-Options:
-1) Re-scope -- the contract is fundamentally wrong. Revise contracts and restart.
-2) Pair -- provide detailed, step-by-step guidance for exactly what you want.
-3) Skip verification -- mark this slice as auto-verified and proceed.
-   (The mismatch is acknowledged but deferred.)
-
-Which option? (1/2/3)
+gl slice [id] [--max N] [--watch] [--dry-run] [--sequential]
+  |
+  +-- Read .greenlight/slices/*.md frontmatter
+  +-- Read GRAPH.json for deps
+  +-- Find ready slices (status=pending, all deps=complete, not in_progress)
+  |
+  +-- id provided -> run single slice directly:
+  |    exec claude -p "/gl:slice {id}" $CLAUDE_FLAGS
+  |
+  +-- 0 ready -> print what's blocked and why, exit
+  |
+  +-- 1 ready -> run directly, no tmux:
+  |    exec claude -p "/gl:slice {id}" $CLAUDE_FLAGS
+  |
+  +-- 2+ ready:
+       |
+       +-- --sequential OR no tmux -> sequential mode
+       |    +-- pick first ready slice by graph order
+       |    +-- exec claude -p "/gl:slice {id}" $CLAUDE_FLAGS
+       |    +-- on exit, re-read slice state, find next ready
+       |    +-- repeat until no more ready or all blocked
+       |
+       +-- tmux available -> parallel mode
+            +-- create tmux session "{prefix}-{project}" (e.g. "gl-greenlight")
+            +-- one window per slice (up to --max)
+            +-- each window runs:
+            |    claude -p "/gl:slice {id}" $CLAUDE_FLAGS
+            +-- tile layout
+            +-- set status bar
+            +-- attach to session
 ```
 
-### 4.6 Component 5: Contract Schema Extension
-
-**Lives in:** `agents/gl-architect.md` (contract format addition)
-
-Three new optional fields added after the Security section in the contract format:
-
-```markdown
-**Verification:** verify
-**Acceptance Criteria:**
-- User can see campaign cards in a grid layout
-- Each card shows campaign name, status, and key metric
-- Cards are clickable and navigate to campaign detail
-
-**Steps:**
-- Run `npm run dev` and open localhost:3000
-- Navigate to /campaigns
-- Verify cards render in a 3-column grid
+Where `$CLAUDE_FLAGS` comes from config:
+```
+--dangerously-skip-permissions --max-turns 200
 ```
 
-Field rules:
-- `verification`: Optional. Values: `auto`, `verify`. Default: `verify`.
-- `acceptance_criteria`: Optional under `verify`. List of behavioral statements the user can verify. Warn if empty when tier is `verify`.
-- `steps`: Optional under `verify`. List of steps the user runs to verify the feature. Include when the how-to-verify isn't obvious. Warn if both `acceptance_criteria` and `steps` are empty when tier is `verify`.
+### 4.5 `gl slice` -- from inside Claude
 
-### 4.7 CLAUDE.md Addition
+When `/gl:slice` calls `gl slice` and the CLI detects `$CLAUDE_CODE` is set:
 
-Added to `src/CLAUDE.md` after the "Circuit Breaker" section:
+```
+gl slice [id]
+  |
+  +-- id provided -> output instructions for claude to build it
+  |    (claude skill reads this and proceeds with the slice)
+  |
+  +-- 0 ready -> print blocked status
+  |
+  +-- 1 ready -> output the slice id for claude to build
+  |
+  +-- 2+ ready:
+       +-- Output the first ready slice id for claude to build
+       +-- Print to stderr (visible to user):
+            "4 more slices ready. Run in a new terminal:
+             gl slice --max 4"
+```
 
-```markdown
-### Verification Tiers
-- Every contract has a verification tier: `auto` or `verify` (default)
-- After tests pass and verifier approves, the tier gate determines if human acceptance is required
-- Rejection feedback routes to the test writer first -- if the implementation is wrong, the tests weren't tight enough
-- Full protocol: `references/verification-tiers.md`
+The CLI never tries to spawn tmux from inside Claude. It handles one slice and surfaces the parallel opportunity to the user.
+
+### 4.6 Watch Mode
+
+When `gl slice --watch` is passed from the shell:
+
+```
+while true:
+  sleep $WATCH_INTERVAL (default 30s)
+  read all .greenlight/slices/*.md frontmatter
+
+  for each in_progress slice:
+    check if tmux pane is still alive
+    if status changed to "complete":
+      log "S-{id} complete ({test_count} tests)"
+
+  ready = slices where status=pending AND all deps=complete
+  running = count of in_progress slices
+  slots = max - running
+
+  if slots > 0 AND ready is not empty:
+    for each ready slice (up to slots):
+      spawn new tmux window: claude -p "/gl:slice {id}" $CLAUDE_FLAGS
+      log "launched {id} ({name})"
+
+  if no in_progress AND no ready:
+    log "All slices complete or blocked"
+    print summary (total done, total tests, remaining blocked)
+    break
+```
+
+Run `gl slice --watch` once and walk away. It drains the entire dependency graph.
+
+### 4.7 No-tmux Fallback
+
+| Ready slices | With tmux | Without tmux |
+|-------------|-----------|--------------|
+| 0 | Print blocked status | Print blocked status |
+| 1 | Run directly | Run directly |
+| 2+ | Parallel tmux panes | Sequential: run one, re-scan, run next |
+| 2+ with `--watch` | Parallel + auto-refill | Sequential + auto-refill |
+
+Without tmux, the sequential fallback still auto-detects ready slices -- no manual picking. It just processes them one at a time.
+
+### 4.8 tmux Session Layout
+
+Named `{prefix}-{project}` from config (e.g. `gl-greenlight`), tiled automatically:
+
+```
++-------------------------+-------------------------+
+| S4.1                    | S4.2                    |
+| SessionList component   | TrendChart component    |
+|                         |                         |
+| claude -p "/gl:slice    | claude -p "/gl:slice    |
+|   S4.1" --dangerously.. |   S4.2" --dangerously.. |
++-------------------------+-------------------------+
+| S4.3                    | S5.1                    |
+| RemedyComparison        | Basic settings          |
+|                         |                         |
+| claude -p "/gl:slice    | claude -p "/gl:slice    |
+|   S4.3" --dangerously.. |   S5.1" --dangerously.. |
++-------------------------+-------------------------+
+```
+
+### 4.9 Status Bar
+
+tmux status line showing live progress from slice state files:
+
+```bash
+# Set by the CLI when creating the tmux session
+tmux set -g status-right '#(gl status --compact)'
+```
+
+Where `gl status --compact` outputs: `18/36 done | 4 running`
+
+### 4.10 Two Execution Contexts
+
+The `gl` CLI behaves differently depending on where it's called:
+
+| Context | Detection | Parallel strategy |
+|---------|-----------|-------------------|
+| **Shell** | `$CLAUDE_CODE` env var is NOT set | Spawns tmux + claude instances |
+| **Inside Claude** | `$CLAUDE_CODE` env var IS set | Builds one slice, prints hint for the rest |
+
+This means `/gl:slice` (the claude skill) can simply shell out to `gl slice` via the Bash tool, and the CLI detects it's inside Claude and does the right thing.
+
+### 4.11 Relationship Between CLI and Claude Skills
+
+```
++----------------------------------------------------------+
+|  User's shell                                            |
+|                                                          |
+|  $ gl slice --watch                                      |
+|    |                                                     |
+|    +-- CLI reads state, finds ready slices               |
+|    +-- CLI spawns tmux session                           |
+|    +-- Each pane runs:                                   |
+|    |    claude -p "/gl:slice S4.1" --dangerously-skip..  |
+|    |      |                                              |
+|    |      +-- Claude loads /gl:slice skill               |
+|    |      +-- Skill calls: gl slice S4.1 (detects inside |
+|    |      |   claude, returns slice info)                 |
+|    |      +-- Skill builds the slice (tests -> impl)     |
+|    |      +-- On completion, writes slices/S4.1.md       |
+|    |                                                     |
+|    +-- CLI polls slices/*.md every 30s                   |
+|    +-- CLI detects S4.1 complete, spawns S4.4            |
+|    +-- Repeat until done                                 |
++----------------------------------------------------------+
+```
+
+The CLI is the orchestrator. Claude is the worker. The slice state files are the communication channel between them.
+
+---
+
+## 5. Config Additions
+
+```json
+{
+  "parallel": {
+    "max": 4,
+    "claude_flags": "--dangerously-skip-permissions --max-turns 200",
+    "tmux_session_prefix": "gl",
+    "watch_interval_seconds": 30
+  }
+}
+```
+
+Users can override `claude_flags` to use `--allowedTools` instead of `--dangerously-skip-permissions` if they want a safer setup.
+
+---
+
+## 6. Error Handling
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Slice fails (non-zero exit) | Mark `status: failed` in frontmatter, do NOT retry, log to pane |
+| tmux not installed | Sequential fallback with install hint |
+| claude not in PATH | Error and exit with install instructions |
+| No slices ready | Print blocked slices and their unmet deps |
+| Git conflict between panes | Committing session retries once, then marks failed |
+| `--max-turns` exceeded | claude exits, slice stays `in_progress`, user investigates |
+| All deps blocked | Print dependency chain, suggest which slice to unblock |
+| Pane crashes mid-slice | Watch loop detects dead pane + `in_progress` status, logs warning |
+
+---
+
+## 7. Examples
+
+```bash
+# From shell -- auto-detects and parallelises
+$ gl slice
+-> 5 slices ready, launching 4 in tmux session "gl-greenlight"
+
+# Watch mode -- fire and forget
+$ gl slice --watch
+-> 13 slices ready, launching 4... (9 queued)
+S4.1 complete (42 tests) -> launched S4.4
+S4.2 complete (38 tests) -> launched S5.2
+...
+All slices complete or blocked.
+  28/36 done | 1,847 tests | 8 blocked on S6.1
+
+# Specific slice
+$ gl slice S2.8
+
+# Preview
+$ gl slice --dry-run
+Ready (5):   S4.1, S4.2, S4.3, S5.1, S5.4
+Running (2): S2.8, S3.4
+Blocked (8): S3.5 (needs S3.4), S4.4 (needs S4.1,S4.2,S4.3), ...
+Would launch: S4.1, S4.2, S4.3, S5.1
+
+# Project status
+$ gl status
+Progress: [########..........] 18/36 slices
+Running:  S2.8 (implementing), S3.4 (security)
+Ready:    S3.6, S4.1, S4.2, S4.3, S5.1
+Tests:    1,247 passing, 0 failing, 134 security
 ```
 
 ---
 
-## 5. Data Model
+## 8. File Changes in Codebase
 
-No database entities. No persistent state files beyond what the orchestrator already maintains. The verification tier system operates within:
+### 8.1 New Go Packages (4 packages)
 
-| Storage | What | Lifetime |
-|---------|------|----------|
-| Contract fields | verification, acceptance_criteria, steps | Permanent (in CONTRACTS.md) |
-| Orchestrator context | Rejection count, rejection log, effective tier | Single /gl:slice execution |
-| User feedback | Verbatim rejection text | Passed to test writer, then discarded |
-| Checkpoint output | Verify checkpoint markdown | Displayed to user (ephemeral) |
+| Package | Purpose | Est. Lines |
+|---------|---------|-----------|
+| `internal/frontmatter/` | Parse/write flat key-value YAML frontmatter from slice state files | ~150 |
+| `internal/state/` | Read slices/*.md and GRAPH.json, compute ready/blocked/running slices | ~200 |
+| `internal/tmux/` | Create/manage tmux sessions and panes via os/exec | ~200 |
+| `internal/process/` | Spawn and manage Claude processes via os/exec | ~150 |
 
----
+### 8.2 Modified Go Files
 
-## 6. Integration with Existing Systems
+| File | Change |
+|------|--------|
+| `internal/cli/cli.go` | Add new subcommand cases to `Run()` switch: slice, status, help, roadmap, changelog, init, design, etc. |
+| `internal/cli/cli.go:printUsage()` | Update help text with new commands |
+| `internal/cmd/` | New command handler files: status.go, help.go, slice.go, roadmap.go, changelog.go, init.go, design.go |
 
-### 6.1 /gl:slice Pipeline
+### 8.3 No Change Required
 
-Changes to the pipeline:
+- `main.go` -- args already forwarded to `cli.Run`, contentFS already available
+- `internal/installer/` -- no manifest changes for CLI commands (they're Go code, not embedded content)
+- `internal/version/` -- no changes
 
-| Step | Current | After Verification Tiers |
-|------|---------|--------------------------|
-| Step 6 (Verification) | Verifier checks contract coverage, stubs, wiring | Unchanged -- verifier also reports tier from contracts |
-| Step 6b (NEW) | Does not exist | Verification tier gate: resolve tier, present checkpoint if verify, handle approval/rejection |
-| Step 7 (Summary/docs) | Runs after verification passes | Runs after verification tier gate passes (approval received or tier is auto) |
-| Step 9 (Visual checkpoint) | Reads config.workflow.visual_checkpoint | Deprecated -- log warning if visual_checkpoint is true, reference verification tiers instead |
+### 8.4 npm Wrapper Update
 
-### 6.2 Circuit Breaker (references/circuit-breaker.md)
-
-No interaction. The circuit breaker handles implementation death spirals (Step 3). Verification tiers handle post-verification human acceptance (Step 6b). They operate on different steps in the pipeline and track different counters (attempt_count vs rejection_count).
-
-### 6.3 Checkpoint Protocol (references/checkpoint-protocol.md)
-
-The checkpoint type table gains one new type:
-
-| Checkpoint Type | Trigger | When to Pause |
-|-----------------|---------|---------------|
-| Visual | ~~UI slice needs human eyes~~ Deprecated -- use verify tier | interactive mode only |
-| Decision | Rule 4 architectural stop | always |
-| External Action | Human action needed outside Claude | always |
-| Circuit Break | 3 per-test or 7 per-slice failures | always |
-| **Acceptance** | **Slice verification tier is verify** | **always (even in yolo mode)** |
-
-Acceptance checkpoints always pause, even in yolo mode. The whole point of verification tiers is human confirmation -- skipping it defeats the purpose.
-
-### 6.4 Agent Isolation (CLAUDE.md)
-
-No changes to the isolation table. The test writer already cannot see implementation code. The rejection feedback is behavioral (user's words about what they expected vs. what they observed). The implementer still receives test names only.
-
-### 6.5 Deviation Rules (references/deviation-rules.md)
-
-No interaction. Deviation rules handle unplanned work during implementation. Verification tiers handle post-implementation acceptance. The rejection flow spawns agents through the normal /gl:slice pipeline, which already integrates deviation rules.
-
-### 6.6 gl-verifier Agent
-
-The verifier gains awareness of verification tiers:
-- Read the `verification` field from each contract
-- Include the effective tier in the verification report
-- Flag contracts that are missing both `acceptance_criteria` and `steps` when tier is `verify`
-
-This is informational -- the verifier reports tier status, it does not enforce the gate. The orchestrator enforces the gate.
+| File | Change |
+|------|--------|
+| `npm/bin/index.js` | Forward new subcommands to binary (should already work since it passes all args through) |
 
 ---
 
-## 7. File Changes Summary
+## 9. Proposed Build Order
 
-| File | Change | Lines Added/Modified |
-|------|--------|---------------------|
-| `src/references/verification-tiers.md` | **NEW** | ~130 lines |
-| `src/commands/gl/slice.md` | Add Step 6b, modify Step 9, add rejection handling | ~80 lines added/modified |
-| `src/agents/gl-architect.md` | Add verification/acceptance_criteria/steps to contract format | ~25 lines added |
-| `src/agents/gl-verifier.md` | Add tier awareness to verification report | ~15 lines added |
-| `src/references/checkpoint-protocol.md` | Add Acceptance checkpoint type, deprecate Visual, update mode table | ~20 lines modified |
-| `src/references/verification-patterns.md` | Add cross-reference to verification-tiers.md | ~5 lines added |
-| `src/templates/config.md` | Add deprecation note on visual_checkpoint | ~5 lines added |
-| `src/CLAUDE.md` | Add Verification Tiers rule | 4 lines added |
-| `internal/installer/installer.go` | Add 1 manifest entry | 1 line added |
-| `internal/installer/manifest_docs_test.go` | Update manifest count in tests | ~1 line modified |
+### Phase 1: Foundation
+1. **Frontmatter parser** (`internal/frontmatter`) -- Parse/write flat key-value frontmatter from `.greenlight/slices/*.md` files
+2. **State reader** (`internal/state`) -- Read slice files, GRAPH.json deps, compute ready/blocked/running
+3. **CLI dispatch refactoring** -- Add new subcommand cases to `cli.Run()`, update `printUsage()`
 
-**Total new content:** ~280 lines of markdown, 2 lines of Go.
+### Phase 2: Local Commands (no Claude needed)
+4. **`gl status`** -- Read all slice files, compute summary, display progress
+5. **`gl status --compact`** -- One-liner for tmux status bar
+6. **`gl help`** -- List commands, detect project state, show context
+7. **`gl roadmap`** -- Read and display ROADMAP.md
+8. **`gl changelog`** -- Read and display from summaries/*.md
 
----
+### Phase 3: Autonomous Commands (headless Claude)
+9. **Process spawner** (`internal/process`) -- Spawn claude processes with configurable flags
+10. **`gl slice {id}`** -- Single slice, headless Claude
+11. **`gl slice` auto-detect** -- Find ready slices, run one
+12. **tmux manager** (`internal/tmux`) -- Create/manage tmux sessions
+13. **`gl slice` parallel** -- tmux spawning for 2+ ready slices
+14. **`gl slice --watch`** -- Poll loop, auto-refill completed slots
 
-## 8. Proposed Build Order
+### Phase 4: Interactive Commands
+15. **`gl init`** -- Launch interactive Claude with init skill
+16. **`gl design`** -- Launch interactive Claude with design skill
 
-These are logical groupings for the architect to refine into slices with contracts:
-
-1. **Schema Extension** -- Add `verification`, `acceptance_criteria`, `steps` fields to the contract format in `gl-architect.md`. Update the contract format template. Update `gl-verifier.md` to report tier in verification output. This is the foundation -- contracts must support tiers before anything else.
-
-2. **Verification Gate** -- Add Step 6b to `/gl:slice`. Read tier from contracts, resolve effective tier (verify > auto, aggregation), present Verify checkpoint, handle "approved" response. Simple gate -- no rejection handling yet. Create `references/verification-tiers.md` with tier definitions and checkpoint format.
-
-3. **Rejection Flow** -- Handle non-"approved" responses in the verification gate. Present structured classification options. Route to test writer (with behavioral feedback, contract, acceptance criteria) or to user for contract revision. Resume TDD loop after new tests.
-
-4. **Rejection Counter** -- Track rejections per slice. Increment on each rejection. Escalation at 3 with options: re-scope, pair, skip. Add escalation format to `references/verification-tiers.md`.
-
-5. **Documentation and Deprecation** -- Update `CLAUDE.md` with verification tier rule. Update `references/checkpoint-protocol.md` with Acceptance checkpoint type and Visual deprecation. Update `references/verification-patterns.md` with cross-reference. Add deprecation note to `templates/config.md` for `visual_checkpoint`. Modify Step 9 of `/gl:slice` to log deprecation warning.
-
-6. **Architect Integration** -- Update `gl-architect.md` to generate `acceptance_criteria` and `steps` from requirements. Add guidance for tier selection: `auto` for pure data/logic/infrastructure, `verify` for everything else (it's the default anyway). Update `gl-designer.md` to capture verification preferences during design sessions.
-
----
-
-## 9. Security
-
-No new security surface. The verification tier system:
-- Does not expose any external interfaces
-- Does not handle user input beyond the existing slash command and "approved"/free-text response pattern
-- Does not store credentials or sensitive data
-- Does not modify agent isolation boundaries
-
-The rejection flow has a **positive security property**: it prevents auto-completion of slices that may have security-relevant behavioral mismatches. A user reviewing acceptance criteria may catch issues that automated tests miss (e.g., "the API returns sensitive fields that shouldn't be visible").
+### Phase 5: Integration
+17. **Signal handling** -- SIGINT/SIGTERM graceful shutdown for tmux sessions
+18. **npm wrapper verification** -- Ensure new subcommands pass through correctly
 
 ---
 
@@ -421,12 +520,12 @@ The rejection flow has a **positive security property**: it prevents auto-comple
 
 | Item | Why Deferred | When to Revisit |
 |------|-------------|-----------------|
-| Partial approval (per-criterion) | Adds UX complexity; one approval per slice is simpler and sufficient for MVP | When users report needing granular approval on large slices |
-| Rejection history persistence | Currently ephemeral per-slice execution; no cross-session need identified | When users request post-mortem analysis of rejection patterns |
-| AI-assisted gap classification | Orchestrator presents options, user chooses; AI classification adds unreliable complexity | When classification accuracy can be measured against user choices |
-| Configurable rejection threshold (3) | Need real-world data to calibrate; matches circuit breaker threshold for consistency | After 20+ real-world rejections provide calibration data |
-| Screenshot/visual diffing | Requires tooling outside Go CLI scope; human eyes are more reliable for MVP | When visual regression testing tools are integrated |
-| Tier inference from contract content | Could auto-suggest verify for UI contracts, auto for infra | When architect consistently forgets to set tiers |
+| `gl wrap` parallel | Parallelising boundary wrapping adds complexity | When users wrap 5+ boundaries regularly |
+| `gl assess` / `gl map` CLI | These are less frequently used and work fine as Claude skills | When users run these from shell regularly |
+| `gl ship` CLI | Final verification is a one-time operation per milestone | When the workflow is mature |
+| Custom terminal mux | tmux is sufficient and ubiquitous | If tmux is unavailable on target platforms |
+| Web dashboard | CLI monitoring is sufficient for 1-10 parallel sessions | When teams need shared visibility |
+| Windows tmux support | macOS and Linux are primary targets | If Windows becomes a supported platform |
 
 ---
 
@@ -434,14 +533,10 @@ The rejection flow has a **positive security property**: it prevents auto-comple
 
 | # | Gray Area | Decision | Rationale |
 |---|-----------|----------|-----------|
-| 1 | Tier count | Two tiers: `auto` and `verify`. No `demo` or `review` distinction. | The distinction between "check a list" and "walk through steps" is artificial. Both involve looking at output and confirming intent. Two tiers, one decision: "Can tests alone capture intent?" |
-| 2 | Default tier | `verify` -- forgetting to set a tier gives a human checkpoint, not auto-approve | Safe default. The cost of an unnecessary verify is low. The cost of a missing verify is a completed slice that doesn't match intent. |
-| 3 | Tier location | In the contract, not in GRAPH.json or config.json | The contract is the source of truth for what a boundary does and how it's verified. |
-| 4 | Rejection routing | Always through test writer first, even for implementation gaps | TDD-correct. If the implementation is wrong and tests pass, the tests weren't tight enough. |
-| 5 | Tier resolution | Highest tier wins + aggregation. verify > auto. One checkpoint per slice. | Minimizes user interruptions. A slice with mixed tiers gets the highest tier with all criteria aggregated. |
-| 6 | Rejection counter | Per-slice, escalation at 3. | A slice is the unit of work. Mirrors the circuit breaker's slice-level ceiling. |
-| 7 | visual_checkpoint deprecation | Keep in config but deprecate with warning. Tiers in contracts supersede it. | Default `verify` tier already provides human verification. The toggle is redundant but harmless. |
-| 8 | Rejection feedback isolation | Test writer receives user's verbatim behavioral feedback, contract, and acceptance criteria. No implementation details. | Preserves agent isolation. User's words are about behavior, not implementation. |
-| 9 | Gap classification UX | Orchestrator presents actionable options that implicitly map to gap types. User picks; orchestrator routes. | Users should not need to understand Greenlight's internal taxonomy. |
-| 10 | Reference file location | New `references/verification-tiers.md` following the circuit-breaker.md pattern. | Different concern from existing verification-patterns.md. Automated vs human verification are separate topics. |
-| 11 | Verify checkpoint content | Combined: `acceptance_criteria` + `steps` under one tier. Criteria = what to check. Steps = how, when not obvious. Both optional but warn if neither present. | Eliminates the artificial review/demo split. One checkpoint format handles both structured acceptance and interactive demos. |
+| 1 | CLI language | Extend existing Go binary | Single binary, already has CLI dispatch, flag parsing, test patterns. No new runtime dependency. |
+| 2 | Workflow approach | Full Greenlight workflow (/gl:design -> /gl:init -> /gl:slice) | Follows established pattern, generates contracts and dependency graph properly. |
+| 3 | Parallelism mechanism | tmux | Ubiquitous, visual monitoring, attach/detach support. |
+| 4 | Context detection | $CLAUDE_CODE env var | Automatic, reliable, no user action needed. |
+| 5 | Watch interval | 30 seconds (configurable) | Balances responsiveness with CPU usage. |
+| 6 | Sequential fallback | Auto-detect and run one-at-a-time | No manual picking, graceful degradation. |
+| 7 | Claude flags | Configurable in config.json parallel section | Users can switch between --dangerously-skip-permissions and --allowedTools. |

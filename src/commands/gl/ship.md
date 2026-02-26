@@ -238,3 +238,42 @@ Prioritise fixes:
 2. Failing tests
 3. Missing contract coverage
 4. Everything else
+
+---
+
+## File-Per-Slice State Integration (C-84)
+
+This section documents how /gl:ship adapts its state reads when the project uses file-per-slice format (C-80). Legacy format behaviour is completely unchanged — if the state format is legacy, all reads go to STATE.md as before.
+
+### State Format Detection
+
+Detect state format (C-80) before performing any state reads:
+
+- If file-per-slice: read all slice files from `.greenlight/slices/` for the completeness pre-check
+- If legacy: read STATE.md as before (no change)
+
+### File-Per-Slice Read Path
+
+When using file-per-slice format:
+
+1. Read all slice files from `.greenlight/slices/`
+2. Pre-check: all slice files must have status complete — if any slice file does not have status complete, stop and report which slices are incomplete
+3. If any incomplete slices found: stop and report which slices are not complete before proceeding
+
+### Legacy Fallback
+
+If format is legacy: read STATE.md as before. Legacy format behaviour is completely unchanged — no change.
+
+### Error Handling
+
+| Error State | When | Behaviour |
+|-------------|------|-----------|
+| FormatDetectionFailure | Cannot determine state format | Report error. Suggest running /gl:init |
+| SliceFileNotFound | A referenced slice file does not exist in `.greenlight/slices/` | Report error. Cannot verify completeness without slice file |
+| RegenerationFailure | STATE.md regeneration fails | Warn but continue. Slice files are still correct |
+
+### Invariants
+
+- All slice files must be read before the ship check proceeds
+- Legacy format behaviour is completely unchanged
+- Slice files in `.greenlight/slices/` are the source of truth for completeness verification

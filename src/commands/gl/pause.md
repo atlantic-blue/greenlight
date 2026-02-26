@@ -108,3 +108,52 @@ Tests: {N} passing, {N} failing
 
 Resume with: /gl:resume
 ```
+
+---
+
+## File-Per-Slice State Integration (C-84)
+
+This section documents how /gl:pause adapts its state writes when the project uses file-per-slice format (C-80). Legacy format behaviour is completely unchanged — if the state format is legacy, all writes go to STATE.md as before.
+
+### State Format Detection
+
+Detect state format (C-80) before performing any state reads or writes:
+
+- If file-per-slice: write pause state to own slice file, write resume context to `project-state.json`, regenerate STATE.md (D-34)
+- If legacy: write to STATE.md as before (no change)
+
+### File-Per-Slice Write Path
+
+When using file-per-slice format:
+
+1. Write pause state (step, paused_at, session context) to the own slice file at `.greenlight/slices/{id}.md` — only writes to its own slice file, never to another slice's file
+2. Write resume context to `project-state.json` (slice, step, paused_at, next action, context needed)
+3. Regenerate STATE.md (D-34) after writing to the slice file
+
+### Legacy Fallback
+
+If format is legacy: write to STATE.md as before. Legacy format behaviour is completely unchanged — no change.
+
+### Error Handling
+
+| Error State | When | Behaviour |
+|-------------|------|-----------|
+| FormatDetectionFailure | Cannot determine state format | Report error. Suggest running /gl:init |
+| SliceFileNotFound | Target slice file does not exist in `.greenlight/slices/` | Create it. Warn |
+| RegenerationFailure | STATE.md regeneration fails | Warn but continue. Slice file and project-state.json are still correct |
+
+### Crash Safety (NFR-4)
+
+All state writes use write-to-temp-then-rename (atomic writes) to prevent corruption:
+
+- Slice file writes: write to temp file, then rename to target path (atomic)
+- `project-state.json` writes: write to temp file, then rename (atomic)
+- STATE.md regeneration: write to temp file, then rename to STATE.md (atomic)
+
+### Invariants
+
+- /gl:pause writes ONLY to its own slice file (never to another slice's file)
+- Resume context is always written to `project-state.json` in file-per-slice mode
+- STATE.md is regenerated after every state write (D-34)
+- Legacy format behaviour is completely unchanged
+- Crash safety via write-to-temp-then-rename on all writes (NFR-4)

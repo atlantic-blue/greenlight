@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/cmd"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 35 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 38 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -32,6 +32,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
 		"commands/gl/map.md":                       &fstest.MapFile{Data: []byte("# Map\n")},
+		"commands/gl/migrate-state.md":             &fstest.MapFile{Data: []byte("# Migrate State\n")},
 		"commands/gl/pause.md":                     &fstest.MapFile{Data: []byte("# Pause\n")},
 		"commands/gl/quick.md":                     &fstest.MapFile{Data: []byte("# Quick\n")},
 		"commands/gl/resume.md":                    &fstest.MapFile{Data: []byte("# Resume\n")},
@@ -44,9 +45,11 @@ func buildTestFS() fstest.MapFS {
 		"references/checkpoint-protocol.md":        &fstest.MapFile{Data: []byte("# Checkpoint Protocol\n")},
 		"references/circuit-breaker.md":            &fstest.MapFile{Data: []byte("# Circuit Breaker\n")},
 		"references/deviation-rules.md":            &fstest.MapFile{Data: []byte("# Deviation Rules\n")},
+		"references/state-format.md":              &fstest.MapFile{Data: []byte("# State Format\n")},
 		"references/verification-patterns.md":      &fstest.MapFile{Data: []byte("# Verification Patterns\n")},
 		"references/verification-tiers.md":         &fstest.MapFile{Data: []byte("# Verification Tiers\n")},
 		"templates/config.md":                      &fstest.MapFile{Data: []byte("# Config Template\n")},
+		"templates/slice-state.md":                &fstest.MapFile{Data: []byte("# Slice State Template\n")},
 		"templates/state.md":                       &fstest.MapFile{Data: []byte("# State Template\n")},
 		"CLAUDE.md":                                &fstest.MapFile{Data: []byte("# Greenlight CLAUDE.md\n\nTest content\n")},
 	}

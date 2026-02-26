@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/cli"
 )
 
-// buildTestFS returns an fstest.MapFS with all 35 manifest files.
+// buildTestFS returns an fstest.MapFS with all 38 manifest files.
 func buildTestFS() *fstest.MapFS {
 	manifestFiles := []string{
 		"agents/gl-architect.md",
@@ -32,6 +32,7 @@ func buildTestFS() *fstest.MapFS {
 		"commands/gl/help.md",
 		"commands/gl/init.md",
 		"commands/gl/map.md",
+		"commands/gl/migrate-state.md",
 		"commands/gl/pause.md",
 		"commands/gl/quick.md",
 		"commands/gl/resume.md",
@@ -44,9 +45,11 @@ func buildTestFS() *fstest.MapFS {
 		"references/checkpoint-protocol.md",
 		"references/circuit-breaker.md",
 		"references/deviation-rules.md",
+		"references/state-format.md",
 		"references/verification-patterns.md",
 		"references/verification-tiers.md",
 		"templates/config.md",
+		"templates/slice-state.md",
 		"templates/state.md",
 		"CLAUDE.md",
 	}
@@ -254,7 +257,7 @@ func TestRun_UnknownCommand_ShowsCommandName(t *testing.T) {
 	}{
 		{"deploy", "deploy", "unknown command: deploy"},
 		{"upgrade", "upgrade", "unknown command: upgrade"},
-		{"init", "init", "unknown command: init"},
+		{"run", "run", "unknown command: run"},
 	}
 
 	for _, tc := range testCases {
@@ -412,5 +415,269 @@ func TestRun_ArgsAfterSubcommand_PassedToHandler(t *testing.T) {
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0 when flags forwarded correctly, got %d", exitCode)
+	}
+}
+
+// C-97: New commands are recognized and dispatched (not treated as unknown)
+func TestRun_NewCommands_AreRecognized(t *testing.T) {
+	contentFS := buildTestFS()
+
+	testCases := []struct {
+		name    string
+		command string
+	}{
+		{"status", "status"},
+		{"slice", "slice"},
+		{"init", "init"},
+		{"design", "design"},
+		{"roadmap", "roadmap"},
+		{"changelog", "changelog"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			cli.Run([]string{tc.command}, contentFS, &stdout)
+
+			output := stdout.String()
+			if strings.Contains(output, "unknown command: "+tc.command) {
+				t.Errorf("command %q should be recognized, but got 'unknown command': %s", tc.command, output)
+			}
+		})
+	}
+}
+
+// C-97: New commands return a valid exit code (dispatch does not crash)
+func TestRun_NewCommands_ReturnValidExitCode(t *testing.T) {
+	contentFS := buildTestFS()
+
+	testCases := []struct {
+		name    string
+		command string
+	}{
+		{"status", "status"},
+		{"slice", "slice"},
+		{"init", "init"},
+		{"design", "design"},
+		{"roadmap", "roadmap"},
+		{"changelog", "changelog"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			exitCode := cli.Run([]string{tc.command}, contentFS, &stdout)
+
+			if exitCode != 0 && exitCode != 1 {
+				t.Errorf("command %q returned unexpected exit code %d (must be 0 or 1)", tc.command, exitCode)
+			}
+		})
+	}
+}
+
+// C-97: New commands receive args[1:] (subcommand args are forwarded, not the command name itself)
+func TestRun_NewCommands_SubcommandArgsForwarded(t *testing.T) {
+	contentFS := buildTestFS()
+
+	testCases := []struct {
+		name    string
+		args    []string
+		command string
+	}{
+		{"status with flag", []string{"status", "--verbose"}, "status"},
+		{"slice with subarg", []string{"slice", "S-01"}, "slice"},
+		{"init with flag", []string{"init", "--dry-run"}, "init"},
+		{"design with subarg", []string{"design", "my-feature"}, "design"},
+		{"roadmap with flag", []string{"roadmap", "--format=json"}, "roadmap"},
+		{"changelog with subarg", []string{"changelog", "S-01"}, "changelog"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			cli.Run(tc.args, contentFS, &stdout)
+
+			output := stdout.String()
+			if strings.Contains(output, "unknown command: "+tc.command) {
+				t.Errorf("command %q with extra args should dispatch, not be treated as unknown: %s", tc.command, output)
+			}
+		})
+	}
+}
+
+// C-97: printUsage shows project lifecycle commands grouped by category
+func TestRun_PrintUsage_ShowsProjectLifecycleCommands(t *testing.T) {
+	contentFS := buildTestFS()
+	var stdout bytes.Buffer
+
+	cli.Run([]string{}, contentFS, &stdout)
+
+	output := stdout.String()
+
+	projectLifecycleCommands := []string{"init", "design", "roadmap"}
+	for _, command := range projectLifecycleCommands {
+		if !strings.Contains(output, command) {
+			t.Errorf("expected usage to contain project lifecycle command %q, got: %s", command, output)
+		}
+	}
+}
+
+// C-97: printUsage shows building commands grouped by category
+func TestRun_PrintUsage_ShowsBuildingCommands(t *testing.T) {
+	contentFS := buildTestFS()
+	var stdout bytes.Buffer
+
+	cli.Run([]string{}, contentFS, &stdout)
+
+	output := stdout.String()
+	if !strings.Contains(output, "slice") {
+		t.Errorf("expected usage to contain building command 'slice', got: %s", output)
+	}
+}
+
+// C-97: printUsage shows state and progress commands grouped by category
+func TestRun_PrintUsage_ShowsStateAndProgressCommands(t *testing.T) {
+	contentFS := buildTestFS()
+	var stdout bytes.Buffer
+
+	cli.Run([]string{}, contentFS, &stdout)
+
+	output := stdout.String()
+
+	stateCommands := []string{"status", "changelog"}
+	for _, command := range stateCommands {
+		if !strings.Contains(output, command) {
+			t.Errorf("expected usage to contain state/progress command %q, got: %s", command, output)
+		}
+	}
+}
+
+// C-97: printUsage shows commands grouped with category headings
+func TestRun_PrintUsage_ShowsCategoryGroupings(t *testing.T) {
+	contentFS := buildTestFS()
+	var stdout bytes.Buffer
+
+	cli.Run([]string{}, contentFS, &stdout)
+
+	output := stdout.String()
+
+	// All six new commands must appear somewhere in usage
+	newCommands := []string{"init", "design", "roadmap", "slice", "status", "changelog"}
+	for _, command := range newCommands {
+		if !strings.Contains(output, command) {
+			t.Errorf("expected usage to list new command %q, got: %s", command, output)
+		}
+	}
+}
+
+// C-97: help flag shows updated usage with all new commands
+func TestRun_HelpFlag_ShowsUpdatedUsageWithNewCommands(t *testing.T) {
+	contentFS := buildTestFS()
+
+	helpVariants := []struct {
+		name string
+		args []string
+	}{
+		{"help", []string{"help"}},
+		{"--help", []string{"--help"}},
+		{"-h", []string{"-h"}},
+	}
+
+	newCommands := []string{"init", "design", "roadmap", "slice", "status", "changelog"}
+
+	for _, variant := range helpVariants {
+		t.Run(variant.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			exitCode := cli.Run(variant.args, contentFS, &stdout)
+
+			if exitCode != 0 {
+				t.Errorf("expected exit code 0 for %q, got %d", variant.name, exitCode)
+			}
+
+			output := stdout.String()
+			for _, command := range newCommands {
+				if !strings.Contains(output, command) {
+					t.Errorf("%q: expected usage to contain new command %q, got: %s", variant.name, command, output)
+				}
+			}
+		})
+	}
+}
+
+// C-97: Unknown command still returns 1 after dispatch extension
+func TestRun_UnknownCommand_StillReturnsOneAfterExtension(t *testing.T) {
+	contentFS := buildTestFS()
+
+	unknownCommands := []struct {
+		name    string
+		command string
+	}{
+		{"deploy", "deploy"},
+		{"upgrade", "upgrade"},
+		{"run", "run"},
+		{"build", "build"},
+	}
+
+	for _, tc := range unknownCommands {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			exitCode := cli.Run([]string{tc.command}, contentFS, &stdout)
+
+			if exitCode != 1 {
+				t.Errorf("unknown command %q should return exit code 1, got %d", tc.command, exitCode)
+			}
+
+			output := stdout.String()
+			if !strings.Contains(output, "unknown command: "+tc.command) {
+				t.Errorf("expected 'unknown command: %s', got: %s", tc.command, output)
+			}
+		})
+	}
+}
+
+// C-97: Unknown command still prints usage after dispatch extension
+func TestRun_UnknownCommand_StillPrintsUsageAfterExtension(t *testing.T) {
+	contentFS := buildTestFS()
+	var stdout bytes.Buffer
+
+	cli.Run([]string{"notacommand"}, contentFS, &stdout)
+
+	output := stdout.String()
+	if !strings.Contains(output, "Usage:") {
+		t.Errorf("expected usage to be printed after unknown command, got: %s", output)
+	}
+}
+
+// C-97: Regression — existing commands continue to work identically after dispatch extension
+func TestRun_ExistingCommands_ContinueToWorkAfterExtension(t *testing.T) {
+	contentFS := buildTestFS()
+	var stdout bytes.Buffer
+
+	exitCode := cli.Run([]string{"version"}, contentFS, &stdout)
+
+	if exitCode != 0 {
+		t.Errorf("version command should still return exit code 0 after dispatch extension, got %d", exitCode)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "greenlight") {
+		t.Errorf("version command should still output 'greenlight' after dispatch extension, got: %s", output)
+	}
+}
+
+// C-97: Regression — no args still returns 0 and prints usage after dispatch extension
+func TestRun_NoArgs_StillReturnsZeroAfterExtension(t *testing.T) {
+	contentFS := buildTestFS()
+	var stdout bytes.Buffer
+
+	exitCode := cli.Run([]string{}, contentFS, &stdout)
+
+	if exitCode != 0 {
+		t.Errorf("no args should still return exit code 0 after dispatch extension, got %d", exitCode)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Usage:") {
+		t.Errorf("no args should still print usage after dispatch extension, got: %s", output)
 	}
 }

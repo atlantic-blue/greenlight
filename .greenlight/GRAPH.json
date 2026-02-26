@@ -1,7 +1,7 @@
 {
   "project": "greenlight",
-  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, documentation system, circuit breaker module, and verification tiers. Defines build order by slice with explicit dependencies and parallelism.",
-  "date": "2026-02-19",
+  "description": "Dependency graph for Greenlight CLI stabilisation, brownfield MVP, documentation system, circuit breaker module, verification tiers, parallel state, and CLI orchestrator. Defines build order by slice with explicit dependencies and parallelism.",
+  "date": "2026-02-23",
 
   "slices": {
     "S-01": {
@@ -375,6 +375,296 @@
       "boundaries": [
         "gl-architect.md -> Tier selection guidance and acceptance criteria generation"
       ]
+    },
+
+    "S-28": {
+      "name": "Slice State Foundation Documents",
+      "description": "Create templates/slice-state.md (schema, lifecycle, session tracking, body sections, naming, examples) and references/state-format.md (detection logic, concurrent access patterns, STATE.md regeneration, crash safety, backward compatibility). These are the foundation documents that all other parallel-state changes reference.",
+      "deliverables": ["src/templates/slice-state.md", "src/references/state-format.md"],
+      "contracts": ["C-76", "C-77"],
+      "depends_on": [],
+      "user_action": "1. Run multiple /gl:slice sessions in parallel without state corruption (foundation)",
+      "milestone": "parallel-state",
+      "wave": 18,
+      "estimated_tests": 6,
+      "boundaries": [
+        "Template file -> Agents (slice state schema and lifecycle)",
+        "Reference doc -> All commands (state detection, concurrency, backward compat)"
+      ]
+    },
+    "S-29": {
+      "name": "Init Command and State Detection",
+      "description": "Update /gl:init to create .greenlight/slices/ directory with individual slice files and .greenlight/project-state.json instead of monolithic STATE.md. Implement state format detection logic (directory existence check) that all commands follow. New projects use file-per-slice from day one.",
+      "deliverables": ["src/commands/gl/init.md (update)"],
+      "contracts": ["C-78", "C-79", "C-80"],
+      "depends_on": ["S-28"],
+      "user_action": "1. Run multiple /gl:slice sessions in parallel without state corruption (new projects)",
+      "milestone": "parallel-state",
+      "wave": 19,
+      "estimated_tests": 10,
+      "boundaries": [
+        "/gl:init orchestrator -> Filesystem (slices/ directory + slice files)",
+        "/gl:init orchestrator -> Filesystem (project-state.json)",
+        "All commands -> State detection logic (format resolution)"
+      ]
+    },
+    "S-30": {
+      "name": "Slice Command State Write",
+      "description": "Update /gl:slice to read from and write to individual slice files in file-per-slice mode. Add advisory session tracking (ISO timestamp + random suffix) on slice claim. Regenerate STATE.md after every write. Preserve legacy STATE.md behaviour for non-migrated projects.",
+      "deliverables": ["src/commands/gl/slice.md (update)"],
+      "contracts": ["C-81", "C-82"],
+      "depends_on": ["S-28", "S-29"],
+      "user_action": "1. Run multiple /gl:slice sessions in parallel without state corruption",
+      "milestone": "parallel-state",
+      "wave": 20,
+      "estimated_tests": 10,
+      "boundaries": [
+        "/gl:slice orchestrator -> Filesystem (own slice file + STATE.md regeneration)",
+        "/gl:slice orchestrator -> Slice file frontmatter (advisory session field)"
+      ]
+    },
+    "S-31": {
+      "name": "Supporting Command Updates",
+      "description": "Update /gl:status (read all slice files, compute summary), /gl:pause (write to slice file + project-state.json), /gl:resume (read from slice files + project-state.json), /gl:ship (read all slice files for completeness check), /gl:add-slice (create new slice file), /gl:quick (update test counts in slice file). All commands gain state detection and regenerate STATE.md after writes.",
+      "deliverables": ["src/commands/gl/status.md (update)", "src/commands/gl/pause.md (update)", "src/commands/gl/resume.md (update)", "src/commands/gl/ship.md (update)", "src/commands/gl/add-slice.md (update)", "src/commands/gl/quick.md (update)"],
+      "contracts": ["C-83", "C-84"],
+      "depends_on": ["S-28", "S-29"],
+      "user_action": "2. See accurate slice status across all concurrent sessions",
+      "milestone": "parallel-state",
+      "wave": 20,
+      "estimated_tests": 12,
+      "boundaries": [
+        "/gl:status command -> Filesystem (read all slice files, compute summary)",
+        "Supporting commands -> State detection + slice file reads/writes"
+      ]
+    },
+    "S-32": {
+      "name": "Migration Command",
+      "description": "Create /gl:migrate-state command that converts existing STATE.md projects to file-per-slice format. Parses legacy STATE.md, creates .greenlight/slices/ directory with individual slice files, creates project-state.json, backs up STATE.md, generates new STATE.md in generated format. Migration is explicit (D-32), one-way, and all-or-nothing with rollback on failure.",
+      "deliverables": ["src/commands/gl/migrate-state.md"],
+      "contracts": ["C-85", "C-86"],
+      "depends_on": ["S-28"],
+      "user_action": "3. Migrate existing projects to the new state format",
+      "milestone": "parallel-state",
+      "wave": 20,
+      "estimated_tests": 10,
+      "boundaries": [
+        "User -> /gl:migrate-state command (legacy STATE.md to file-per-slice)",
+        "/gl:migrate-state -> Filesystem (backup + atomic creation)"
+      ]
+    },
+    "S-33": {
+      "name": "Documentation Updates",
+      "description": "Update src/CLAUDE.md with state format awareness rule (check slices/ before STATE.md). Update src/templates/state.md to document both formats, generated nature of STATE.md, and migration instructions. Update src/references/checkpoint-protocol.md to reference slice files for state context.",
+      "deliverables": ["src/CLAUDE.md (update)", "src/templates/state.md (update)", "src/references/checkpoint-protocol.md (update)"],
+      "contracts": ["C-87", "C-88", "C-89"],
+      "depends_on": ["S-28"],
+      "user_action": "Supports all user actions (documentation enabling layer)",
+      "milestone": "parallel-state",
+      "wave": 21,
+      "estimated_tests": 6,
+      "boundaries": [
+        "CLAUDE.md -> All agents (state format awareness hard rule)",
+        "templates/state.md -> Both formats documented",
+        "checkpoint-protocol.md -> Slice file references for state context"
+      ]
+    },
+    "S-34": {
+      "name": "Manifest and Integration",
+      "description": "Add 3 new entries to Go CLI Manifest in installer.go: commands/gl/migrate-state.md, references/state-format.md, templates/slice-state.md. Manifest grows from 35 to 38 entries. Update manifest count in tests. End-to-end verification that all embedded content is installed correctly.",
+      "deliverables": ["internal/installer/installer.go (manifest update +3)", "internal/installer/manifest_docs_test.go (count update)"],
+      "contracts": ["C-90"],
+      "depends_on": ["S-28", "S-32", "S-33"],
+      "user_action": "Supports all user actions (manifest enabling layer)",
+      "milestone": "parallel-state",
+      "wave": 22,
+      "estimated_tests": 6,
+      "boundaries": [
+        "Go CLI -> Manifest (3 new file paths)"
+      ]
+    },
+
+    "S-35": {
+      "name": "Frontmatter Parser",
+      "description": "Parse and write flat key-value YAML frontmatter from .greenlight/slices/*.md files. Simple line-by-line string splitting (D-43). Foundation for all CLI state reading.",
+      "packages": ["internal/frontmatter/frontmatter.go"],
+      "contracts": ["C-91", "C-92"],
+      "depends_on": [],
+      "user_action": "Supports all user actions (foundation for reading slice state files from Go)",
+      "milestone": "cli-orchestrator",
+      "wave": 23,
+      "estimated_tests": 10,
+      "boundaries": [
+        "Frontmatter parser -> Slice state files (parse flat YAML frontmatter)",
+        "Frontmatter writer -> Slice state files (write flat YAML frontmatter)"
+      ]
+    },
+    "S-36": {
+      "name": "State Reader",
+      "description": "Read all slice frontmatter into structs, read GRAPH.json dependency data, compute which slices are ready (pending + all deps complete), and detect shell vs Claude execution context via $CLAUDE_CODE env var.",
+      "packages": ["internal/state/state.go"],
+      "contracts": ["C-93", "C-94", "C-95", "C-96"],
+      "depends_on": ["S-35"],
+      "user_action": "1. User can see project status from the terminal without Claude (gl status)",
+      "milestone": "cli-orchestrator",
+      "wave": 24,
+      "estimated_tests": 12,
+      "boundaries": [
+        "State reader -> Filesystem (read all slice frontmatter into structs)",
+        "State reader -> Filesystem (read GRAPH.json dependency data)",
+        "State reader -> Ready slice computation (pending + deps complete)",
+        "State reader -> Environment (detect shell vs Claude context)"
+      ]
+    },
+    "S-37": {
+      "name": "CLI Dispatch Extension",
+      "description": "Extend existing cli.Run() switch statement with new subcommand cases (status, slice, init, design, roadmap, changelog). Update printUsage() with all commands grouped by category. No new packages -- modifies internal/cli/cli.go only.",
+      "packages": ["internal/cli/cli.go"],
+      "contracts": ["C-97"],
+      "depends_on": [],
+      "user_action": "7. User can get help with context-aware command listing (gl help)",
+      "milestone": "cli-orchestrator",
+      "wave": 23,
+      "estimated_tests": 8,
+      "boundaries": [
+        "User -> CLI dispatcher (new subcommands added to Run switch)"
+      ]
+    },
+    "S-38": {
+      "name": "Status Command",
+      "description": "gl status reads all slice files, computes progress summary (complete/total, running, ready, blocked, test counts), and displays to stdout. Supports --compact flag for tmux status bar one-liner.",
+      "packages": ["internal/cmd/status.go"],
+      "contracts": ["C-98", "C-99"],
+      "depends_on": ["S-35", "S-36", "S-37"],
+      "user_action": "1. User can see project status from the terminal without Claude (gl status)",
+      "milestone": "cli-orchestrator",
+      "wave": 25,
+      "estimated_tests": 10,
+      "boundaries": [
+        "CLI -> Command handler (status with progress display)",
+        "CLI -> Command handler (compact one-liner for tmux status bar)"
+      ]
+    },
+    "S-39": {
+      "name": "Help Command",
+      "description": "gl help displays all available commands grouped by category. Detects if inside a greenlight project and appends current state summary (slice count, complete count, ready count).",
+      "packages": ["internal/cmd/help.go"],
+      "contracts": ["C-100"],
+      "depends_on": ["S-36", "S-37"],
+      "user_action": "7. User can get help with context-aware command listing (gl help)",
+      "milestone": "cli-orchestrator",
+      "wave": 25,
+      "estimated_tests": 6,
+      "boundaries": [
+        "CLI -> Command handler (context-aware help listing)"
+      ]
+    },
+    "S-40": {
+      "name": "Roadmap and Changelog Commands",
+      "description": "gl roadmap reads and prints .greenlight/ROADMAP.md. gl changelog reads all .md files from .greenlight/summaries/, sorts chronologically, and prints. Both are local, read-only commands.",
+      "packages": ["internal/cmd/roadmap.go", "internal/cmd/changelog.go"],
+      "contracts": ["C-101", "C-102"],
+      "depends_on": ["S-37"],
+      "user_action": "6. User can see roadmap and changelog from the terminal (gl roadmap, gl changelog)",
+      "milestone": "cli-orchestrator",
+      "wave": 24,
+      "estimated_tests": 8,
+      "boundaries": [
+        "CLI -> Command handler (display ROADMAP.md)",
+        "CLI -> Command handler (display changelog from summaries)"
+      ]
+    },
+    "S-41": {
+      "name": "Process Spawner",
+      "description": "Spawn Claude processes via os/exec.Command (D-42). Headless mode with -p prompt flag and configurable flags. Interactive mode with terminal stdin/stdout/stderr passthrough. Verifies claude is in PATH before spawning.",
+      "packages": ["internal/process/process.go"],
+      "contracts": ["C-103", "C-104"],
+      "depends_on": [],
+      "user_action": "Supports user actions 2-5 (any command that launches Claude)",
+      "milestone": "cli-orchestrator",
+      "wave": 23,
+      "estimated_tests": 8,
+      "boundaries": [
+        "Process spawner -> os/exec (spawn Claude with configurable flags)",
+        "Process spawner -> os/exec (launch interactive Claude session)"
+      ]
+    },
+    "S-42": {
+      "name": "Single Slice Command",
+      "description": "gl slice {id} runs a single slice headlessly via Claude. gl slice with no ID auto-detects the first ready slice by wave/ID order. Detects shell vs Claude context -- inside Claude outputs info, in shell spawns a process.",
+      "packages": ["internal/cmd/slice.go"],
+      "contracts": ["C-105", "C-106"],
+      "depends_on": ["S-36", "S-37", "S-41"],
+      "user_action": "2. User can run a single slice headlessly from the terminal (gl slice S-35)",
+      "milestone": "cli-orchestrator",
+      "wave": 25,
+      "estimated_tests": 10,
+      "boundaries": [
+        "CLI -> Command handler (run single slice headlessly)",
+        "CLI -> Command handler (auto-detect ready slices, run one)"
+      ]
+    },
+    "S-43": {
+      "name": "tmux Manager",
+      "description": "Check tmux availability, create named tmux sessions, add windows to existing sessions, attach to sessions. All operations via os/exec calling tmux binary.",
+      "packages": ["internal/tmux/tmux.go"],
+      "contracts": ["C-107", "C-108", "C-109", "C-110"],
+      "depends_on": [],
+      "user_action": "3. User can run multiple slices in parallel via tmux (gl slice --max 4)",
+      "milestone": "cli-orchestrator",
+      "wave": 23,
+      "estimated_tests": 8,
+      "boundaries": [
+        "tmux manager -> os/exec (check tmux availability)",
+        "tmux manager -> os/exec (create named tmux session)",
+        "tmux manager -> os/exec (add window to existing session)",
+        "tmux manager -> os/exec (attach to existing session)"
+      ]
+    },
+    "S-44": {
+      "name": "Parallel Slice Execution",
+      "description": "When 2+ slices are ready and tmux is available, create a tmux session with one window per slice (up to --max), tiled layout, and attach. Falls back to sequential mode when tmux unavailable or --sequential flag.",
+      "packages": ["internal/cmd/slice.go"],
+      "contracts": ["C-111", "C-112"],
+      "depends_on": ["S-42", "S-43"],
+      "user_action": "3. User can run multiple slices in parallel via tmux (gl slice --max 4)",
+      "milestone": "cli-orchestrator",
+      "wave": 26,
+      "estimated_tests": 8,
+      "boundaries": [
+        "CLI -> Command handler (parallel slice execution via tmux)",
+        "CLI -> Command handler (sequential fallback when no tmux)"
+      ]
+    },
+    "S-45": {
+      "name": "Watch Mode",
+      "description": "gl slice --watch polls every 30s (configurable), detects completed slices, auto-fills empty slots with newly ready slices. Terminates when no in_progress and no ready remain. Includes --dry-run preview mode.",
+      "packages": ["internal/cmd/slice.go"],
+      "contracts": ["C-113", "C-114"],
+      "depends_on": ["S-44"],
+      "user_action": "4. User can fire-and-forget to drain the dependency graph (gl slice --watch)",
+      "milestone": "cli-orchestrator",
+      "wave": 27,
+      "estimated_tests": 8,
+      "boundaries": [
+        "CLI -> Command handler (watch mode poll loop)",
+        "CLI -> Command handler (preview mode without execution)"
+      ]
+    },
+    "S-46": {
+      "name": "Interactive Commands",
+      "description": "gl init launches interactive Claude session with /gl:init skill. gl design launches interactive Claude session with /gl:design skill. Both detect context -- inside Claude outputs info, in shell launches interactive process without --dangerously-skip-permissions.",
+      "packages": ["internal/cmd/init.go", "internal/cmd/design.go"],
+      "contracts": ["C-115", "C-116"],
+      "depends_on": ["S-37", "S-41"],
+      "user_action": "5. User can launch interactive Claude sessions (gl init, gl design)",
+      "milestone": "cli-orchestrator",
+      "wave": 25,
+      "estimated_tests": 8,
+      "boundaries": [
+        "CLI -> Command handler (launch interactive init session)",
+        "CLI -> Command handler (launch interactive design session)"
+      ]
     }
   },
 
@@ -480,6 +770,66 @@
       "slices": ["S-26", "S-27"],
       "parallel": true,
       "scope": "verification-tiers"
+    },
+    "18": {
+      "description": "Parallel state foundation: slice state template (schema, lifecycle, examples) and state format reference (detection logic, concurrent access, backward compatibility). No dependencies on other milestones. Standalone foundation for all parallel state features.",
+      "slices": ["S-28"],
+      "parallel": false,
+      "scope": "parallel-state"
+    },
+    "19": {
+      "description": "Init command and state detection: update /gl:init to create slices/ directory, individual slice files, and project-state.json. Implement state format detection. Depends on S-28 (foundation documents must define schema and detection rules).",
+      "slices": ["S-29"],
+      "parallel": false,
+      "scope": "parallel-state"
+    },
+    "20": {
+      "description": "Core command updates and migration: /gl:slice reads/writes own slice file with session tracking, supporting commands adapted for both formats, and /gl:migrate-state converts legacy projects. S-30, S-31, and S-32 all depend on S-28+S-29 and can be built in parallel.",
+      "slices": ["S-30", "S-31", "S-32"],
+      "parallel": true,
+      "scope": "parallel-state"
+    },
+    "21": {
+      "description": "Parallel state documentation: CLAUDE.md state format rule, templates/state.md update for both formats, checkpoint-protocol.md slice file references. Depends on S-28 (foundation documents must be defined).",
+      "slices": ["S-33"],
+      "parallel": false,
+      "scope": "parallel-state"
+    },
+    "22": {
+      "description": "Parallel state manifest and integration: add 3 new file paths to Go CLI manifest, update manifest count in tests, end-to-end verification. Depends on S-28 (template and reference files must exist), S-32 (migrate-state command must exist), and S-33 (documentation updates must be applied).",
+      "slices": ["S-34"],
+      "parallel": false,
+      "scope": "parallel-state"
+    },
+    "23": {
+      "description": "CLI orchestrator foundations: frontmatter parser, CLI dispatch extension, process spawner, and tmux manager. All four are independent packages with no inter-dependencies. Can be built in parallel.",
+      "slices": ["S-35", "S-37", "S-41", "S-43"],
+      "parallel": true,
+      "scope": "cli-orchestrator"
+    },
+    "24": {
+      "description": "State reader and simple local commands: state reader depends on frontmatter parser (S-35). Roadmap and changelog commands depend only on CLI dispatch (S-37). Can be built in parallel.",
+      "slices": ["S-36", "S-40"],
+      "parallel": true,
+      "scope": "cli-orchestrator"
+    },
+    "25": {
+      "description": "Core command handlers: status, help, single slice, and interactive commands. All depend on state reader and/or dispatch. Status, help, single slice, and interactive can be built in parallel.",
+      "slices": ["S-38", "S-39", "S-42", "S-46"],
+      "parallel": true,
+      "scope": "cli-orchestrator"
+    },
+    "26": {
+      "description": "Parallel slice execution: extends single slice command with tmux spawning and sequential fallback. Depends on S-42 (single slice logic) and S-43 (tmux manager).",
+      "slices": ["S-44"],
+      "parallel": false,
+      "scope": "cli-orchestrator"
+    },
+    "27": {
+      "description": "Watch mode: wraps parallel/sequential execution in a poll loop with auto-refill. Depends on S-44 (parallel execution must exist). Includes dry-run preview.",
+      "slices": ["S-45"],
+      "parallel": false,
+      "scope": "cli-orchestrator"
     }
   },
 
@@ -514,15 +864,45 @@
     { "from": "S-24", "to": "S-23", "reason": "Rejection flow handles non-approved responses from the verification gate; gate must exist (C-65) to trigger rejections" },
     { "from": "S-25", "to": "S-23", "reason": "Rejection counter tracks rejections from the verification gate; gate must exist (C-65) to produce rejections to count" },
     { "from": "S-26", "to": "S-23", "reason": "Documentation references verification-tiers.md (C-64) which must exist; checkpoint protocol update references Step 6b (C-65); manifest entry requires references/verification-tiers.md file" },
-    { "from": "S-27", "to": "S-22", "reason": "Architect tier guidance references the verification fields (C-62) that must be defined in the contract format first" }
+    { "from": "S-27", "to": "S-22", "reason": "Architect tier guidance references the verification fields (C-62) that must be defined in the contract format first" },
+    { "from": "S-29", "to": "S-28", "reason": "Init command references slice state schema (C-76) and state format detection rules (C-77) which must be defined in foundation documents" },
+    { "from": "S-30", "to": "S-28", "reason": "Slice command references slice file schema (C-76) and state format rules (C-77) for reading/writing slice files" },
+    { "from": "S-30", "to": "S-29", "reason": "Slice command uses state detection (C-80) which must be implemented in /gl:init update; needs slices/ directory to exist" },
+    { "from": "S-31", "to": "S-28", "reason": "Supporting commands reference state format rules (C-77) for detection and slice file schema (C-76) for parsing" },
+    { "from": "S-31", "to": "S-29", "reason": "Supporting commands use state detection (C-80) and require slices/ directory and project-state.json to exist (C-78, C-79)" },
+    { "from": "S-32", "to": "S-28", "reason": "Migration command creates slice files following schema (C-76) and follows state format rules (C-77) for the target format" },
+    { "from": "S-33", "to": "S-28", "reason": "Documentation references state-format.md (C-77) and slice-state.md (C-76) which must exist before cross-references can be added" },
+    { "from": "S-34", "to": "S-28", "reason": "Manifest entries for templates/slice-state.md and references/state-format.md require the files to exist" },
+    { "from": "S-34", "to": "S-32", "reason": "Manifest entry for commands/gl/migrate-state.md requires the command file to exist" },
+    { "from": "S-34", "to": "S-33", "reason": "Manifest installation must include all documentation updates (CLAUDE.md, state.md, checkpoint-protocol.md) to ensure consistency" },
+
+    { "from": "S-36", "to": "S-35", "reason": "StateReadSlices calls frontmatter.Parse to parse each slice file; cannot read slice state without the parser" },
+    { "from": "S-38", "to": "S-35", "reason": "RunStatus depends on frontmatter parsing (via state reader) to read slice files" },
+    { "from": "S-38", "to": "S-36", "reason": "RunStatus calls state.ReadSlices, state.ReadGraph, state.FindReadySlices to compute summary" },
+    { "from": "S-38", "to": "S-37", "reason": "RunStatus is dispatched via the extended cli.Run() switch statement" },
+    { "from": "S-39", "to": "S-36", "reason": "RunHelp calls state.ReadSlices to append project state summary to help output" },
+    { "from": "S-39", "to": "S-37", "reason": "RunHelp is dispatched via the extended cli.Run() switch statement" },
+    { "from": "S-40", "to": "S-37", "reason": "RunRoadmap and RunChangelog are dispatched via the extended cli.Run() switch statement" },
+    { "from": "S-42", "to": "S-36", "reason": "RunSlice calls state.ReadSlices, state.ReadGraph, state.FindReadySlices, state.DetectContext for slice selection and context detection" },
+    { "from": "S-42", "to": "S-37", "reason": "RunSlice is dispatched via the extended cli.Run() switch statement" },
+    { "from": "S-42", "to": "S-41", "reason": "RunSlice calls process.SpawnClaude to spawn headless Claude sessions" },
+    { "from": "S-44", "to": "S-42", "reason": "Parallel execution extends RunSlice with tmux spawning; single-slice logic must exist first" },
+    { "from": "S-44", "to": "S-43", "reason": "Parallel execution calls tmux.IsAvailable, tmux.NewSession, tmux.AddWindow, tmux.AttachSession" },
+    { "from": "S-45", "to": "S-44", "reason": "Watch mode wraps parallel/sequential execution in a poll loop; both execution modes must exist first" },
+    { "from": "S-46", "to": "S-37", "reason": "RunInit and RunDesign are dispatched via the extended cli.Run() switch statement" },
+    { "from": "S-46", "to": "S-41", "reason": "RunInit and RunDesign call process.SpawnInteractive to launch interactive Claude sessions" }
   ],
 
   "import_graph": {
     "main": ["internal/cli"],
     "internal/cli": ["internal/cmd"],
-    "internal/cmd": ["internal/installer", "internal/version"],
+    "internal/cmd": ["internal/installer", "internal/version", "internal/state", "internal/process", "internal/tmux"],
     "internal/installer": ["internal/version"],
-    "internal/version": []
+    "internal/version": [],
+    "internal/frontmatter": [],
+    "internal/state": ["internal/frontmatter"],
+    "internal/process": [],
+    "internal/tmux": []
   },
 
   "user_action_mapping": {
@@ -620,6 +1000,56 @@
       "action": "Slice with auto tier behaves exactly as today -- no regression",
       "slices": ["S-23", "S-26"],
       "primary_slice": "S-23"
+    },
+    "20_parallel_slices": {
+      "action": "Run multiple /gl:slice sessions in parallel without state corruption",
+      "slices": ["S-28", "S-29", "S-30", "S-31", "S-33", "S-34"],
+      "primary_slice": "S-30"
+    },
+    "21_accurate_status": {
+      "action": "See accurate slice status across all concurrent sessions",
+      "slices": ["S-28", "S-29", "S-31", "S-33", "S-34"],
+      "primary_slice": "S-31"
+    },
+    "22_migrate_state": {
+      "action": "Migrate existing projects to the new state format",
+      "slices": ["S-28", "S-32", "S-34"],
+      "primary_slice": "S-32"
+    },
+    "23_cli_status": {
+      "action": "User can see project status from the terminal without Claude (gl status)",
+      "slices": ["S-35", "S-36", "S-37", "S-38"],
+      "primary_slice": "S-38"
+    },
+    "24_cli_single_slice": {
+      "action": "User can run a single slice headlessly from the terminal (gl slice S-35)",
+      "slices": ["S-35", "S-36", "S-37", "S-41", "S-42"],
+      "primary_slice": "S-42"
+    },
+    "25_cli_parallel_slices": {
+      "action": "User can run multiple slices in parallel via tmux (gl slice --max 4)",
+      "slices": ["S-35", "S-36", "S-37", "S-41", "S-42", "S-43", "S-44"],
+      "primary_slice": "S-44"
+    },
+    "26_cli_watch_mode": {
+      "action": "User can fire-and-forget to drain the dependency graph (gl slice --watch)",
+      "slices": ["S-35", "S-36", "S-37", "S-41", "S-42", "S-43", "S-44", "S-45"],
+      "primary_slice": "S-45"
+    },
+    "27_cli_interactive": {
+      "action": "User can launch interactive Claude sessions (gl init, gl design)",
+      "slices": ["S-37", "S-41", "S-46"],
+      "primary_slice": "S-46"
+    },
+    "28_cli_roadmap_changelog": {
+      "action": "User can see roadmap and changelog from the terminal (gl roadmap, gl changelog)",
+      "slices": ["S-37", "S-40"],
+      "primary_slice": "S-40"
+    },
+    "29_cli_help": {
+      "action": "User can get help with context-aware command listing (gl help)",
+      "slices": ["S-36", "S-37", "S-39"],
+      "primary_slice": "S-39"
     }
   }
 }

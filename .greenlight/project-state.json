@@ -1,0 +1,12 @@
+{
+  "overview": {
+    "value_prop": "TDD-first development system for Claude Code",
+    "stack": "Go 1.24 (stdlib only)",
+    "mode": "yolo"
+  },
+  "session": {
+    "last_session": "2026-02-22T00:00:00Z",
+    "resume_file": null
+  },
+  "blockers": []
+}

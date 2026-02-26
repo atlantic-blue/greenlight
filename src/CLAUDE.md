@@ -151,6 +151,12 @@ When agents discover unplanned work during execution, follow the deviation proto
 3. **Auto-fix blocking issues** — fix to unblock, track
 4. **STOP for architectural changes** — report and wait for decision
 
+### State Format
+- Check `.greenlight/slices/` before reading STATE.md directly — all agents must check slices/ first
+- If `slices/` exists, individual slice files are the source of truth
+- STATE.md is generated output in file-per-slice mode — do not write to it directly
+- Full protocol: `references/state-format.md`
+
 ## What NOT To Do
 
 - Don't add comments that restate the code

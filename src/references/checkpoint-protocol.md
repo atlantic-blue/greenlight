@@ -180,3 +180,12 @@ All checkpoints are logged in the slice summary:
 ```
 
 This helps track where time is spent and whether checkpoints are adding value.
+
+## File-Per-Slice State Context
+
+When saving or restoring checkpoint state context, the state format determines which files to read and write:
+
+- In **file-per-slice mode**: read current slice state from `.greenlight/slices/{id}.md` and project context from `project-state.json`. Write state updates to the individual slice file, not STATE.md.
+- In **legacy mode**: read and write STATE.md as before (no change).
+
+State format detection (see `references/state-format.md`) determines which path to use. Checkpoint save/restore works with both formats — the checkpoint protocol itself is format-agnostic.

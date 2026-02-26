@@ -581,13 +581,13 @@ func TestSliceMd_Step9IsNoOpWithDeprecationWarning(t *testing.T) {
 // =============================================================================
 // C-74 Tests: ManifestVerificationTiersUpdate
 // Verifies that installer.Manifest contains "references/verification-tiers.md"
-// with a total count of 35 entries, alphabetically ordered, and CLAUDE.md last.
+// with a total count of 38 entries, alphabetically ordered, and CLAUDE.md last.
 // =============================================================================
 
 func TestManifest_CountIs35(t *testing.T) {
 	got := len(installer.Manifest)
-	if got != 35 {
-		t.Errorf("installer.Manifest must have 35 entries, got %d", got)
+	if got != 38 {
+		t.Errorf("installer.Manifest must have 38 entries, got %d", got)
 	}
 }
 
@@ -666,7 +666,7 @@ func TestManifest_VerificationTiersMdEntryFileIsNonEmpty(t *testing.T) {
 }
 
 func TestManifest_AllExistingEntriesRetained(t *testing.T) {
-	// All 34 previously-existing entries must still be present in the updated manifest of 35
+	// All 35 previously-existing entries must still be present in the updated manifest of 38
 	expectedExisting := []string{
 		"agents/gl-architect.md",
 		"agents/gl-assessor.md",
