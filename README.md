@@ -37,10 +37,11 @@ This matters because:
 
 ## What Greenlight Is
 
-A set of Claude Code slash commands, agents, and engineering standards that enforce test-driven development:
+A set of Claude Code slash commands, a standalone CLI, agents, and engineering standards that enforce test-driven development:
 
 - **10 agents** with strict isolation boundaries (designer, architect, test writer, implementer, security, verifier, debugger, codebase mapper, assessor, wrapper)
-- **16 slash commands** (`/gl:init`, `/gl:design`, `/gl:slice`, `/gl:ship`, etc.) that orchestrate the workflow
+- **16 slash commands** (`/gl:init`, `/gl:design`, `/gl:slice`, `/gl:ship`, etc.) that orchestrate the workflow inside Claude Code
+- **CLI orchestrator** (`greenlight`) that runs slices autonomously, executes in parallel via tmux, and provides local commands that work without Claude
 - **Engineering standards** (`CLAUDE.md`) covering error handling, naming, security, API design, testing, and more
 - **Context degradation awareness** agents stay under 50% context usage to maintain quality
 
@@ -170,6 +171,43 @@ Each slice is independently testable, committable, and deployable.
 |---------|-------------|
 | `/gl:ship` | Full security audit + deploy readiness |
 
+## CLI Commands
+
+The `greenlight` binary also works as a standalone CLI orchestrator. These commands run directly from your terminal — no active Claude Code session required.
+
+```bash
+greenlight help       # Show all commands and project summary
+greenlight version    # Show version, commit, and build date
+```
+
+### Local Commands (no Claude needed)
+
+| Command | Description |
+|---------|-------------|
+| `greenlight status` | Project progress: complete/total, running, ready, blocked, test counts |
+| `greenlight status --compact` | One-line summary for tmux status bars |
+| `greenlight help` | All commands grouped by category, plus project state summary |
+| `greenlight roadmap` | Display `.greenlight/ROADMAP.md` |
+| `greenlight changelog` | Display changelog from `.greenlight/summaries/` |
+
+### Autonomous Commands (launches Claude)
+
+| Command | Description |
+|---------|-------------|
+| `greenlight slice S-01` | Run a single slice through the full TDD loop |
+| `greenlight slice` | Auto-detect the next ready slice and run it |
+| `greenlight slice --max 4` | Run up to 4 ready slices in parallel via tmux (attaches to session) |
+| `greenlight slice --sequential` | Run multiple ready slices one at a time (no tmux) |
+| `greenlight slice --watch` | Poll loop: auto-launch new slices as slots free up, stop when done |
+| `greenlight slice --dry-run` | Preview ready/running/blocked slices without executing |
+
+### Interactive Commands (launches Claude with user input)
+
+| Command | Description |
+|---------|-------------|
+| `greenlight init` | Launch `/gl:init` in an interactive Claude session |
+| `greenlight design` | Launch `/gl:design` in an interactive Claude session |
+
 ## Typical Flow
 
 ### Greenfield
@@ -178,6 +216,12 @@ Each slice is independently testable, committable, and deployable.
 3. `/gl:slice 1` — TDD loop: test, implement, security scan, verify, commit
 4. `/gl:slice 2` ... `/gl:slice N` — repeat for each slice
 5. `/gl:ship` — full security audit + deploy readiness
+
+### Greenfield (CLI)
+1. `greenlight init` — launch interactive init session
+2. `greenlight design` — launch interactive design session
+3. `greenlight slice --watch` — fire-and-forget: drains the entire dependency graph
+4. `greenlight status` — check progress from another terminal
 
 ### Brownfield (existing codebase)
 1. `/gl:map` — analyse existing codebase structure
@@ -191,7 +235,7 @@ Each slice is independently testable, committable, and deployable.
 ### Ongoing
 - `/gl:quick` — ad-hoc bug fixes and small features (still test-first)
 - `/gl:roadmap milestone` — plan next milestone, add slices to the graph
-- `/gl:changelog` — view completed work history
+- `/gl:changelog` or `greenlight changelog` — view completed work history
 - `/gl:roadmap archive` — archive completed milestones
 
 ## Configuration
@@ -247,7 +291,9 @@ After `greenlight install` and `/gl:init`:
   DESIGN.md             System design document (from /gl:design)
   CONTRACTS.md          Typed contracts (from architect)
   GRAPH.json            Dependency DAG
-  STATE.md              Slice progress tracker
+  slices/               Per-slice state files (parallel-safe)
+  STATE.md              Generated summary (from slices/)
+  project-state.json    Non-slice state (mode, blockers)
   ROADMAP.md            Product roadmap with milestone tracking
   DECISIONS.md          Decision log with source tracing
   QUICK.md              Ad-hoc task history
