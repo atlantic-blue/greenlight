@@ -6,6 +6,7 @@ import (
 	"io/fs"
 
 	"github.com/atlantic-blue/greenlight/internal/cmd"
+	"github.com/atlantic-blue/greenlight/internal/version"
 )
 
 // Run dispatches to the appropriate subcommand based on args.
@@ -48,7 +49,7 @@ func Run(args []string, contentFS fs.FS, stdout io.Writer) int {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprint(w, `
+	fmt.Fprintf(w, `
    ╔══════════════════════════════════════════════════════════╗
    ║                                                          ║
    ║	 ▗▄▄▖▗▄▄▖ ▗▄▄▄▖▗▄▄▄▖▗▖  ▗▖ ▗▖   ▗▄▄▄▖ ▗▄▄▖▗▖ ▗▖▗▄▄▄▖  ║
@@ -60,6 +61,7 @@ func printUsage(w io.Writer) {
                   Tests are the source of truth.
                         Green means done.
 
+Version: %s
 
 Usage: greenlight <command> [flags]
 
@@ -92,5 +94,5 @@ Examples:
   greenlight install --local --on-conflict=replace
   greenlight uninstall --global
   greenlight check --local
-`)
+`, version.Version)
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/atlantic-blue/greenlight/internal/state"
+	"github.com/atlantic-blue/greenlight/internal/version"
 )
 
 // RunHelp handles the "help" subcommand.
@@ -21,6 +22,7 @@ func RunHelp(args []string, stdout io.Writer) int {
 
 // writeCommandListing prints the grouped command reference to the writer.
 func writeCommandListing(stdout io.Writer) {
+	fmt.Fprintf(stdout, "gl %s\n\n", version.Version)
 	fmt.Fprint(stdout, `Usage: gl <command> [flags]
 
 Project lifecycle:
