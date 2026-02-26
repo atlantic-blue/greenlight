@@ -13,17 +13,23 @@ TDD-first development system for [Claude Code](https://docs.anthropic.com/en/doc
 ## Quick Start
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/atlantic-blue/greenlight/main/install.sh | sh
+```
+
+Or with npx:
+
+```bash
 npx greenlight-cc install --global
 ```
 
-Or with Go:
+Then:
 
 ```bash
-go install github.com/atlantic-blue/greenlight@latest
 greenlight install --global
+greenlight help
 ```
 
-Then inside Claude Code, run `/gl:init` to get started.
+Inside Claude Code, run `/gl:init` to get started.
 
 ## Why Greenlight
 
@@ -53,17 +59,21 @@ A set of Claude Code slash commands, a standalone CLI, agents, and engineering s
 
 ## Install
 
-### From GitHub Releases (recommended)
-
-Download the latest binary for your platform from [Releases](https://github.com/atlantic-blue/greenlight/releases), extract it, and add it to your PATH.
+### One-line install (recommended)
 
 ```bash
-# macOS / Linux
-tar xzf greenlight_*.tar.gz
-sudo mv greenlight /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/atlantic-blue/greenlight/main/install.sh | sh
 ```
 
-### From Source
+Detects your OS and architecture, downloads the latest binary from [GitHub Releases](https://github.com/atlantic-blue/greenlight/releases), and installs to `/usr/local/bin`.
+
+### npm
+
+```bash
+npx greenlight-cc install --global
+```
+
+### From source
 
 Requires [Go 1.24+](https://go.dev/dl/).
 
@@ -307,7 +317,6 @@ CLAUDE.md               Engineering standards
 
 - [ ] `greenlight upgrade` — in-place upgrade preserving user config
 - [ ] Homebrew tap (`brew install atlantic-blue/tap/greenlight`)
-- [ ] Curl install script for environments without Go
 - [ ] `greenlight doctor` — diagnose common Claude Code configuration issues
 - [ ] Plugin system for custom agents and commands
 - [ ] Telemetry-free usage analytics (opt-in, local-only)
