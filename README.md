@@ -45,8 +45,8 @@ This matters because:
 
 A set of Claude Code slash commands, a standalone CLI, agents, and engineering standards that enforce test-driven development:
 
-- **10 agents** with strict isolation boundaries (designer, architect, test writer, implementer, security, verifier, debugger, codebase mapper, assessor, wrapper)
-- **16 slash commands** (`/gl:init`, `/gl:design`, `/gl:slice`, `/gl:ship`, etc.) that orchestrate the workflow inside Claude Code
+- **12 agents** with strict isolation boundaries (designer, architect, test writer, implementer, security, verifier, debugger, codebase mapper, assessor, wrapper, marketing researcher, marketing)
+- **17 slash commands** (`/gl:init`, `/gl:design`, `/gl:slice`, `/gl:ship`, `/gl:marketing`, etc.) that orchestrate the workflow inside Claude Code
 - **CLI orchestrator** (`greenlight`) that runs slices autonomously, executes in parallel via tmux, and provides local commands that work without Claude
 - **Engineering standards** (`CLAUDE.md`) covering error handling, naming, security, API design, testing, and more
 - **Context degradation awareness** agents stay under 50% context usage to maintain quality
@@ -181,6 +181,16 @@ Each slice is independently testable, committable, and deployable.
 |---------|-------------|
 | `/gl:ship` | Full security audit + deploy readiness |
 
+### Market
+| Command | Description |
+|---------|-------------|
+| `/gl:marketing init` | Interview about commercial context |
+| `/gl:marketing research` | Deep market research with source citations |
+| `/gl:marketing plan` | Prioritised task plan grounded in research |
+| `/gl:marketing status` | Progress against revenue milestones |
+| `/gl:marketing ask "<q>"` | Grounded Q&A with full marketing context |
+| `/gl:marketing refresh` | Update stale research data (monthly) |
+
 ## CLI Commands
 
 The `greenlight` binary also works as a standalone CLI orchestrator. These commands run directly from your terminal — no active Claude Code session required.
@@ -248,6 +258,90 @@ greenlight version    # Show version, commit, and build date
 - `/gl:changelog` or `greenlight changelog` — view completed work history
 - `/gl:roadmap archive` — archive completed milestones
 
+### Marketing (after ship)
+1. `/gl:marketing init` — interview about revenue target, audience, competitors
+2. `/gl:marketing research` — deep market research with web search (auto-triggered after init)
+3. `/gl:marketing plan` — prioritised 30-day task plan from research findings
+4. `/gl:marketing status` — track progress against milestones
+5. `/gl:marketing ask "question"` — grounded Q&A, generates tasks on demand
+6. `/gl:marketing refresh` — update research monthly as market conditions change
+
+## Marketing
+
+`/gl:marketing` answers: "how do we reach customers and generate revenue?"
+
+Greenlight's `/gl:ship` proves the software is ready. `/gl:marketing` tackles the next problem: distribution and commercial traction. The core principle is that **nothing is invented — everything is researched.** Generic marketing advice that could apply to any product is a failure mode.
+
+### Two-Agent Architecture
+
+Marketing uses two isolated agents, mirroring Greenlight's separation-of-concerns philosophy:
+
+| Agent | Role | Cannot Do |
+|-------|------|-----------|
+| **marketing-researcher** | Conducts web research, produces facts with source URLs | Make recommendations |
+| **marketing** | Reasons over research, produces plans and recommendations | Invent data |
+
+The researcher never recommends. The planner never invents. Research happens before planning — `/gl:marketing plan` refuses to run without `MARKETING_RESEARCH.md`.
+
+### Five Subcommands
+
+**`/gl:marketing init`** — Interview about the product's commercial context: revenue target, audience, competitors, positioning, channels, budget, team capacity. Writes `.greenlight/MARKETING.md` and immediately triggers research.
+
+**`/gl:marketing research`** — The most important phase. The researcher agent uses web search to investigate competitors (actual pricing pages, App Store listings, user reviews), market demand (search volume, community discussions), pricing benchmarks, channel effectiveness (case studies with URLs), and realistic revenue benchmarks. Every claim has a source URL. Estimates are labelled. Contradictions with user assumptions are flagged.
+
+**`/gl:marketing plan`** — Produces a milestone-structured task plan grounded in research. Four milestones: Foundation, First Traction, Repeatable Channel, Revenue Target. Each task cites the research finding that justifies it, includes measurable success criteria, and fits within the stated team capacity.
+
+**`/gl:marketing status`** — Dashboard showing revenue progress, current milestone, task completion, and research freshness. Warns when research is stale (>30 days).
+
+**`/gl:marketing ask "<question>"`** — Grounded Q&A. The marketing agent answers with full context loaded, citing research. Can generate new tasks on confirmation.
+
+**`/gl:marketing refresh`** — Re-runs research to catch pricing changes, new competitors, and market shifts. Flags what changed since the last run.
+
+### GitHub Projects Integration
+
+Optional. When `github_project_url` is set in `.greenlight/config.json`, marketing tasks sync to a GitHub Project as labelled issues. Without it, tasks live in `MARKETING.md`.
+
+```json
+{
+  "github_project_url": "https://github.com/orgs/atlantic-blue/projects/1"
+}
+```
+
+### Example: HushLog
+
+Product: HushLog iOS snore tracker. Price: 14.99 one-time. Competitor: SnoreLab (subscription, 30-40/year). Positioning: private by design, no cloud, no subscription. Revenue target: 1,000/month net after Apple's 15% cut. Team: one founder (2h/week), one marketer (8h/week). Starting state: live on App Store, zero reviews, zero ad spend.
+
+After `/gl:marketing init` and `/gl:marketing research`, the researcher produces findings like:
+
+```
+## Competitor Analysis
+
+### SnoreLab
+- Pricing: Free tier (basic recording), Premium 29.99/year or 79.99 lifetime
+  Source: https://www.snorelab.com/premium/
+- App Store rating: 4.4 (98,000+ reviews)
+  Source: https://apps.apple.com/app/snorelab/id529443604
+- User complaints (from reviews):
+  "Subscription is ridiculous for an alarm clock app" (1-star, 2025-11)
+  "Used to be a one-time purchase, now they want yearly payment" (2-star, 2025-09)
+  Source: App Store reviews, sorted by most recent
+- Distribution: Apple Search Ads (observed on "snoring app" keyword),
+  SEO (ranks #1 for "snore tracker"), content marketing (sleep health blog)
+
+## Pricing Benchmarks
+- Health/sleep tracker apps: 4.99-14.99 one-time, 19.99-49.99/year subscription
+- One-time purchase conversion rate benchmark: 2-4% of page views
+  Source: https://...
+
+## Assumptions Contradicted
+- User assumed 1,000/month net is achievable in 3 months.
+  Research shows median solo-founder health app reaches this at 8-12 months
+  with 50+ reviews and active paid acquisition.
+  Source: https://...
+```
+
+The plan then references these findings: "Optimise App Store subtitle to include 'no subscription' — research shows SnoreLab's top negative reviews cite subscription fatigue (source: App Store reviews). This positions HushLog's one-time pricing as the primary differentiator visible in search results."
+
 ## Configuration
 
 ### Model Profiles
@@ -291,8 +385,8 @@ After `greenlight install` and `/gl:init`:
 
 ```
 .claude/
-  commands/gl/          Slash commands (16 commands)
-  agents/               Agent definitions (10 agents)
+  commands/gl/          Slash commands (17 commands)
+  agents/               Agent definitions (12 agents)
   references/           Shared protocols (3 docs)
   templates/            Schema templates (2 docs)
 
@@ -307,6 +401,8 @@ After `greenlight install` and `/gl:init`:
   ROADMAP.md            Product roadmap with milestone tracking
   DECISIONS.md          Decision log with source tracing
   QUICK.md              Ad-hoc task history
+  MARKETING.md          Marketing state, tasks, milestones
+  MARKETING_RESEARCH.md Research findings with source URLs
   summaries/            Per-slice, per-wrap, and quick task summaries
   config.json           Settings
 

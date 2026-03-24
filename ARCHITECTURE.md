@@ -19,6 +19,7 @@ graph TB
         ship["gl:ship"]
         roadmap["gl:roadmap"]
         addslice["gl:add-slice"]
+        marketing["gl:marketing"]
     end
 
     subgraph Agents["Specialised Agents"]
@@ -32,6 +33,8 @@ graph TB
         wrapper["gl-wrapper"]
         mapper["gl-codebase-mapper"]
         debugger["gl-debugger"]
+        mktresearcher["marketing-researcher"]
+        mktplanner["marketing"]
     end
 
     subgraph Artifacts[".greenlight/ Artifacts"]
@@ -46,6 +49,8 @@ graph TB
         decisions["DECISIONS.md"]
         summaries["summaries/"]
         codebase["codebase/"]
+        mktdoc["MARKETING.md"]
+        mktresearch["MARKETING_RESEARCH.md"]
     end
 
     subgraph ReadOnly["Read-Only Commands"]
@@ -76,6 +81,8 @@ graph TB
     ship -->|verify| verifier
     roadmap -->|milestone planning| designer
     addslice -->|design slice| architect
+    marketing -->|research| mktresearcher
+    marketing -->|plan + ask| mktplanner
 
     %% Agent -> Artifact writes
     designer -->|writes| designdoc
@@ -90,6 +97,8 @@ graph TB
     wrapper -->|writes| contracts
     wrapper -->|writes| lockingtests["tests/locking/"]
     mapper -->|writes| codebase
+    mktresearcher -->|writes| mktresearch
+    mktplanner -->|writes| mktdoc
 
     %% Read-only commands -> Artifacts
     status -->|reads| state
@@ -167,6 +176,18 @@ Analyses existing codebases before initialisation. Four instances run in paralle
 
 Investigates bugs using the scientific method with hypothesis testing. Reproduces the issue, writes a failing test for the root cause, then optionally fixes the code. Can see everything but cannot modify tests without approval.
 
+### marketing-researcher
+**Spawned by:** `/gl:marketing research`, `/gl:marketing refresh`, `/gl:marketing init`
+**Tools:** Read, Write, Bash, Glob, Grep, WebSearch, WebFetch
+
+Conducts deep market research using web search. Produces facts with source URLs — never recommendations. Investigates competitors, pricing, market demand, channel effectiveness, and revenue benchmarks. Every claim must have a source. Estimates are labelled as such. Contradictions between user assumptions and findings are flagged explicitly.
+
+### marketing
+**Spawned by:** `/gl:marketing plan`, `/gl:marketing ask`
+**Tools:** Read, Write, Bash, Glob, Grep, WebSearch, WebFetch, AskUserQuestion
+
+Produces marketing recommendations and task plans grounded in research findings from MARKETING_RESEARCH.md. Every recommendation must cite a specific research finding. Creates milestone-structured plans with specific, actionable tasks ordered by expected return on time. Never invents data or gives generic advice.
+
 ## Agent Isolation Matrix
 
 ```
@@ -182,6 +203,8 @@ Investigates bugs using the scientific method with hypothesis testing. Reproduce
 │ gl-wrapper       │ Impl code, existing tests│ N/A                    │ Modify production code │
 │ gl-debugger      │ Everything               │ N/A                    │ Modify tests (w/o OK)  │
 │ gl-codebase-mapper│ Full codebase           │ N/A (read-only)        │ Modify any code        │
+│ mkt-researcher   │ Product, market data    │ Source code, tests     │ Make recommendations   │
+│ marketing        │ Research, product, plan │ Source code, tests     │ Invent data            │
 └──────────────────┴──────────────────────────┴────────────────────────┴────────────────────────┘
 ```
 
@@ -209,6 +232,13 @@ gl:roadmap milestone → gl-designer (lightweight session, brownfield-aware)
 gl:ship → gl-security (full audit) + gl-verifier (goal-backward check)
 ```
 
+### Marketing
+```
+gl:marketing init → gl:marketing research → gl:marketing plan → gl:marketing status
+  interview         mkt-researcher           marketing agent     read-only display
+                    (web search)             (research-grounded)
+```
+
 ## Data Flow
 
 ```
@@ -232,4 +262,9 @@ Brownfield data flow:
   (mapper)      (assessor)    (wrapper)                    (wrap progress)
        │                           │
        └───────────────────────────┴──→ designer (risk tiers, wrap awareness)
+
+Marketing data flow:
+  DESIGN.md ──→ MARKETING.md ──→ MARKETING_RESEARCH.md ──→ MARKETING.md (plan)
+  (product)     (gl:marketing    (mkt-researcher:           (marketing agent:
+                 init interview)  web search, sources)       research-grounded tasks)
 ```

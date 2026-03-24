@@ -586,8 +586,8 @@ func TestSliceMd_Step9IsNoOpWithDeprecationWarning(t *testing.T) {
 
 func TestManifest_CountIs35(t *testing.T) {
 	got := len(installer.Manifest)
-	if got != 38 {
-		t.Errorf("installer.Manifest must have 38 entries, got %d", got)
+	if got != 41 {
+		t.Errorf("installer.Manifest must have 41 entries, got %d", got)
 	}
 }
 
