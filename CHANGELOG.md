@@ -1,3 +1,5 @@
+## [2.1.2](https://github.com/atlantic-blue/greenlight/compare/v2.1.1...v2.1.2) (2026-03-24)
+
 ## [2.1.1](https://github.com/atlantic-blue/greenlight/compare/v2.1.0...v2.1.1) (2026-02-26)
 
 ## [2.1.0](https://github.com/atlantic-blue/greenlight/compare/v2.0.0...v2.1.0) (2026-02-26)
