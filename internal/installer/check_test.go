@@ -77,7 +77,7 @@ func TestCheck_AllFilesPresentAndNonEmpty_ReturnsTrue(t *testing.T) {
 	}
 
 	output := buf.String()
-	expectedSummary := "all 38 files present\n"
+	expectedSummary := "all 41 files present\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -268,7 +268,7 @@ func TestCheck_VerifyFalseWithNilContentFS_WorksFine(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "all 38 files present") {
+	if !strings.Contains(output, "all 41 files present") {
 		t.Errorf("expected success message, got: %q", output)
 	}
 }
@@ -288,7 +288,7 @@ func TestCheck_VerifyTrue_AllFilesMatchEmbeddedContent_ReturnsTrue(t *testing.T)
 	}
 
 	output := buf.String()
-	expectedSummary := "all 38 files verified\n"
+	expectedSummary := "all 41 files verified\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -348,7 +348,7 @@ func TestCheck_VerifyTrue_SummaryIncludesModifiedCount(t *testing.T) {
 
 	output := buf.String()
 	// Should report 28/30 files verified (0 missing, 0 empty, 2 modified)
-	expectedSummary := "36/38 files verified (0 missing, 0 empty, 2 modified)\n"
+	expectedSummary := "39/41 files verified (0 missing, 0 empty, 2 modified)\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected output to end with %q, got: %q", expectedSummary, output)
 	}
@@ -466,7 +466,7 @@ func TestCheck_SummaryAlwaysLastLine(t *testing.T) {
 			setup: func(t *testing.T, targetDir string) {
 				// no-op, files already installed
 			},
-			expectedLast: "all 38 files present\n",
+			expectedLast: "all 41 files present\n",
 		},
 		{
 			name: "one file missing",
@@ -711,7 +711,7 @@ func TestCheck_PresenceOnlyDoesNotVerifyContent(t *testing.T) {
 		t.Error("presence-only mode should not report MODIFIED files")
 	}
 
-	expectedSummary := "all 38 files present\n"
+	expectedSummary := "all 41 files present\n"
 	if !strings.HasSuffix(output, expectedSummary) {
 		t.Errorf("expected success summary, got: %q", output)
 	}

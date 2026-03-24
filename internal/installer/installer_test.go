@@ -645,7 +645,7 @@ func TestInstall_CLAUDEPrintedWithCorrectPath(t *testing.T) {
 // C-33 Tests: ManifestBrownfieldUpdate
 
 func TestManifest_Contains32Entries(t *testing.T) {
-	if len(installer.Manifest) != 38 {
+	if len(installer.Manifest) != 41 {
 		t.Errorf("expected 41 manifest entries, got %d", len(installer.Manifest))
 	}
 }
