@@ -28,8 +28,8 @@ import (
 // after the 3 new parallel-state files are added.
 func TestManifest_C90_CountIs38(t *testing.T) {
 	got := len(installer.Manifest)
-	if got != 38 {
-		t.Errorf("installer.Manifest must have 38 entries (was 35, +3 new), got %d", got)
+	if got != 41 {
+		t.Errorf("installer.Manifest must have 41 entries (was 38, +3 new), got %d", got)
 	}
 }
 

@@ -40,6 +40,14 @@ allowed-tools: [Read, Bash, Glob]
 │  SHIP                                                        │
 │  /gl:ship              Full audit + deploy readiness         │
 │                                                              │
+│  MARKET                                                      │
+│  /gl:marketing init    Interview → MARKETING.md              │
+│  /gl:marketing research Deep market research with sources    │
+│  /gl:marketing plan    Prioritised task plan from research   │
+│  /gl:marketing status  Progress against revenue milestones   │
+│  /gl:marketing ask     Grounded Q&A with marketing context   │
+│  /gl:marketing refresh Update stale research data            │
+│                                                              │
 │  FLOW                                                        │
 │  map? → assess? → init → design (ROADMAP, DECISIONS) →       │
 │  wrap? → slice 1 (summary) → ... → ship →                    │

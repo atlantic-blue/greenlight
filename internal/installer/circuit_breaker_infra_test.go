@@ -158,8 +158,8 @@ func TestManifest_ContainsCircuitBreakerReference(t *testing.T) {
 }
 
 func TestManifest_Contains34Entries(t *testing.T) {
-	if len(installer.Manifest) != 38 {
-		t.Errorf("expected 38 manifest entries, got %d", len(installer.Manifest))
+	if len(installer.Manifest) != 41 {
+		t.Errorf("expected 41 manifest entries, got %d", len(installer.Manifest))
 	}
 }
 

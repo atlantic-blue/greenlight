@@ -11,7 +11,7 @@ import (
 	"github.com/atlantic-blue/greenlight/internal/installer"
 )
 
-// Helper: buildTestFS creates a complete MapFS with all 38 manifest files.
+// Helper: buildTestFS creates a complete MapFS with all 41 manifest files.
 func buildTestFS() fstest.MapFS {
 	return fstest.MapFS{
 		"agents/gl-architect.md":                   &fstest.MapFile{Data: []byte("# Architect\n")},
@@ -24,6 +24,8 @@ func buildTestFS() fstest.MapFS {
 		"agents/gl-test-writer.md":                 &fstest.MapFile{Data: []byte("# Test Writer\n")},
 		"agents/gl-verifier.md":                    &fstest.MapFile{Data: []byte("# Verifier\n")},
 		"agents/gl-wrapper.md":                     &fstest.MapFile{Data: []byte("# Wrapper\n")},
+		"agents/marketing-researcher.md":           &fstest.MapFile{Data: []byte("# Marketing Researcher\n")},
+		"agents/marketing.md":                      &fstest.MapFile{Data: []byte("# Marketing\n")},
 		"commands/gl/add-slice.md":                 &fstest.MapFile{Data: []byte("# Add Slice\n")},
 		"commands/gl/assess.md":                    &fstest.MapFile{Data: []byte("# Assess\n")},
 		"commands/gl/changelog.md":                 &fstest.MapFile{Data: []byte("# Changelog\n")},
@@ -32,6 +34,7 @@ func buildTestFS() fstest.MapFS {
 		"commands/gl/help.md":                      &fstest.MapFile{Data: []byte("# Help\n")},
 		"commands/gl/init.md":                      &fstest.MapFile{Data: []byte("# Init\n")},
 		"commands/gl/map.md":                       &fstest.MapFile{Data: []byte("# Map\n")},
+		"commands/gl/marketing.md":                 &fstest.MapFile{Data: []byte("# Marketing\n")},
 		"commands/gl/migrate-state.md":             &fstest.MapFile{Data: []byte("# Migrate State\n")},
 		"commands/gl/pause.md":                     &fstest.MapFile{Data: []byte("# Pause\n")},
 		"commands/gl/quick.md":                     &fstest.MapFile{Data: []byte("# Quick\n")},
@@ -643,7 +646,7 @@ func TestInstall_CLAUDEPrintedWithCorrectPath(t *testing.T) {
 
 func TestManifest_Contains32Entries(t *testing.T) {
 	if len(installer.Manifest) != 38 {
-		t.Errorf("expected 38 manifest entries, got %d", len(installer.Manifest))
+		t.Errorf("expected 41 manifest entries, got %d", len(installer.Manifest))
 	}
 }
 
@@ -717,6 +720,8 @@ func TestManifest_AgentsSectionAlphabeticallyOrdered(t *testing.T) {
 		"agents/gl-test-writer.md",
 		"agents/gl-verifier.md",
 		"agents/gl-wrapper.md",
+		"agents/marketing-researcher.md",
+		"agents/marketing.md",
 	}
 
 	if len(agentEntries) != len(expectedOrder) {
@@ -751,6 +756,7 @@ func TestManifest_CommandsSectionAlphabeticallyOrdered(t *testing.T) {
 		"commands/gl/help.md",
 		"commands/gl/init.md",
 		"commands/gl/map.md",
+		"commands/gl/marketing.md",
 		"commands/gl/migrate-state.md",
 		"commands/gl/pause.md",
 		"commands/gl/quick.md",
